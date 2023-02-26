@@ -1,6 +1,10 @@
-# terraform-provider-authress
+# Authress Terraform Provider
 The Authress terraform provider to automatically configure Authress from Terraform
 
+![example workflow](https://github.com/authress/terraform-provider-authress/actions/workflows/build.yml/badge.svg) [![Forums][discuss-badge]][discuss]
+
+[discuss-badge]: https://img.shields.io/badge/discuss-terraform--authress-623CE4.svg?style=flat
+[discuss]: https://discuss.hashicorp.com/c/terraform-providers/31
 
 ## Development
 
