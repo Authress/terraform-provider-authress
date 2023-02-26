@@ -1,16 +1,35 @@
 # Authress Terraform Provider
 The Authress terraform provider to automatically configure Authress from Terraform
 
-![example workflow](https://github.com/authress/terraform-provider-authress/actions/workflows/build.yml/badge.svg) [![Forums][discuss-badge]][discuss]
+![example workflow](https://github.com/authress/terraform-provider-authress/actions/workflows/build.yml/badge.svg) [![Forums][discuss-badge]][discuss] [![Terraform][terraform-badge]][terraform-link]
 
-[discuss-badge]: https://img.shields.io/badge/discuss-terraform--authress-623CE4.svg?style=flat
+[discuss-badge]: https://img.shields.io/badge/build-terraform--authress-623CE4.svg
 [discuss]: https://discuss.hashicorp.com/c/terraform-providers/31
+
+[terraform-badge]: https://img.shields.io/badge/install-terraform--authress-blue.svg
+[terraform-link]: https://registry.terraform.io/providers/hashicorp/authress/latest/docs
+
+## Installation
+
+Install the `Authress` terraform provider, and review the documentation @ [Authress Terraform Documentation](https://registry.terraform.io/providers/hashicorp/authress/latest/docs)
+
+```hcl
+terraform {
+  required_providers {
+    authress = {
+      source  = "authress/authress"
+    }
+  }
+}
+```
+
 
 ## Development
 
 ### Setup
 
 Update your `~/.terraformrc` with the following
+
 ```hcl
 provider_installation {
 

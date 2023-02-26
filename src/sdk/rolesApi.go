@@ -104,7 +104,8 @@ func (c *Client) DeleteRole(roleID string) error {
 		return err
 	}
 
-	body, err := c.doRequest(req)
+	_, err = c.doRequest(req)
+
 	if err != nil {
 		return err
 	}
