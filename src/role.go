@@ -101,7 +101,7 @@ func (r *RoleInterfaceProvider) Schema(_ context.Context, _ resource.SchemaReque
 							Computed: 		true,
 						},
 						"delegate": schema.BoolAttribute {
-							Description: 	"Allows delegating or granting the permission to others without being able to execute tha action.",
+							Description: 	"Allows delegating or granting the permission to others without being able to execute the action.",
 							Optional:    	true,
 							Computed: 		true,
 						},

@@ -20,6 +20,7 @@ required_providers {
     source  = "authress/authress"
     version = "0.2"
 
+    # Authress custom domain configuration: https://authress.io/app/#/settings?focus=domain
     custom_domain = "https://login.example.com"
   }
 }
@@ -40,8 +41,8 @@ resource "authress_role" "document_admin" {
 
 ## Argument Reference
 
-- `access_key` (String, Sensitive) The access key for the Authress API. Should be [configured by your CI/CD](https://authress.io/knowledge-base/docs/category/cicd) for more information. Or it can be overriden directly here. Do not commit this plaintext value to your source code.
-- `custom_domain` (String) Your Authress custom domain. [Configured a custom domain for Account](https://authress.io/app/#/settings?focus=domain) or use [provided domain](https://authress.io/app/#/api?route=overview).
+- `access_key` - `(string)` - The access key for the Authress API. Should be [configured by your CI/CD](https://authress.io/knowledge-base/docs/category/cicd) for more information. Or it can be overridden directly here. Do not commit this plaintext value to your source code.
+- `custom_domain` - `(string)` - Your Authress custom domain. [Configured a custom domain for Account](https://authress.io/app/#/settings?focus=domain) or use [provided domain](https://authress.io/app/#/api?route=overview).
 
 ## Source Code on GitHub
 The Source for this provider is available in the [Authress Terraform Provider GitHub](https://github.com/Authress/terraform-provider-authress) repository.
