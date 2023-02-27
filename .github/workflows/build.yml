@@ -29,5 +29,5 @@ jobs:
     - name: Create Github Release and Tag
       if: github.repository_owner == 'Authress' && github.ref != 'refs/heads/main' && github.event_name == 'push'
       run: |
-        git tag v${GITHUB_REF/refs\/heads\/release\//}.$GITHUB_RUN_NUMBER
+        git tag v${GITHUB_REF/refs\/heads\/release\//}.$GITHUB_RUN_NUMBER -f
         git push origin v${GITHUB_REF/refs\/heads\/release\//}.$GITHUB_RUN_NUMBER
