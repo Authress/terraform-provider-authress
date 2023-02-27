@@ -132,7 +132,7 @@ func (r *RoleInterfaceProvider) Create(ctx context.Context, req resource.CreateR
 	}
 
 	// Create new role
-	authressSdkRole := *MapTerraformRoleToSdk(plannedAuthressRoleResource)
+	authressSdkRole := MapTerraformRoleToSdk(&plannedAuthressRoleResource)
 	returnedRole, err := r.client.CreateRole(authressSdkRole)
 	if err != nil {
 		resp.Diagnostics.AddError(
@@ -146,7 +146,7 @@ func (r *RoleInterfaceProvider) Create(ctx context.Context, req resource.CreateR
 	}
 
 	// Map response body to schema and populate Computed attribute values
-	plannedAuthressRoleResource = *MapSdkRoleToTerraform(*returnedRole)
+	plannedAuthressRoleResource = MapSdkRoleToTerraform(returnedRole)
 	plannedAuthressRoleResource.LastUpdated = TerraformType.StringValue(time.Now().Format(time.RFC850))
 
 	// Set state to fully populated data
@@ -181,7 +181,7 @@ func (r *RoleInterfaceProvider) Read(ctx context.Context, req resource.ReadReque
 	}
 
 	// Set refreshed currentAuthressRoleResource
-	currentAuthressRoleResource = *MapSdkRoleToTerraform(*authressSdkRole)
+	currentAuthressRoleResource = MapSdkRoleToTerraform(authressSdkRole)
 	diags = resp.State.Set(ctx, &currentAuthressRoleResource)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
@@ -200,7 +200,7 @@ func (r *RoleInterfaceProvider) Update(ctx context.Context, req resource.UpdateR
 	}
 
 	// Generate API request body from plannedAuthressRoleResource
-	authressSdkRole := *MapTerraformRoleToSdk(plannedAuthressRoleResource)
+	authressSdkRole := MapTerraformRoleToSdk(&plannedAuthressRoleResource)
 
 	// Update existing role
 	returnedRole, err := r.client.UpdateRole(plannedAuthressRoleResource.RoleID.ValueString(), authressSdkRole)
@@ -215,7 +215,7 @@ func (r *RoleInterfaceProvider) Update(ctx context.Context, req resource.UpdateR
 		return
 	}
 
-	plannedAuthressRoleResource = *MapSdkRoleToTerraform(*returnedRole)
+	plannedAuthressRoleResource = MapSdkRoleToTerraform(returnedRole)
 	plannedAuthressRoleResource.LastUpdated = TerraformType.StringValue(time.Now().Format(time.RFC850))
 
 	diags = resp.State.Set(ctx, plannedAuthressRoleResource)
@@ -254,7 +254,7 @@ func (r *RoleInterfaceProvider) ImportState(ctx context.Context, req resource.Im
 	resource.ImportStatePassthroughID(ctx, path.Root("role_id"), req, resp)
 }
 
-func MapSdkRoleToTerraform(authressSdkRole AuthressSdk.Role) (*AuthressRoleResource) {
+func MapSdkRoleToTerraform(authressSdkRole *AuthressSdk.Role) (AuthressRoleResource) {
 	terraformRole := AuthressRoleResource {
 		RoleID: TerraformType.StringValue(authressSdkRole.RoleID),
 		LegacyID: TerraformType.StringValue(authressSdkRole.RoleID),
@@ -271,10 +271,10 @@ func MapSdkRoleToTerraform(authressSdkRole AuthressSdk.Role) (*AuthressRoleResou
 		}
    }
 
-   return &terraformRole
+   return terraformRole
 }
 
-func MapTerraformRoleToSdk(terraformRole AuthressRoleResource) (*AuthressSdk.Role) {
+func MapTerraformRoleToSdk(terraformRole *AuthressRoleResource) (AuthressSdk.Role) {
 	authressSdkRole := AuthressSdk.Role {
 		RoleID: terraformRole.RoleID.ValueString(),
 		Name: terraformRole.Name.ValueString(),
@@ -291,5 +291,5 @@ func MapTerraformRoleToSdk(terraformRole AuthressRoleResource) (*AuthressSdk.Rol
 		authressSdkRole.Permissions = append(authressSdkRole.Permissions, authressSdkRolePermissions)
 	}
 
-   return &authressSdkRole
+   return authressSdkRole
 }

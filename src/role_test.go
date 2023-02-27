@@ -13,7 +13,7 @@ func TestRoleResource(t *testing.T) {
 			// Create and Read testing
 			{
 				Config: providerConfig + `
-resource "authress_role" "test-1" {
+resource "authress_role" "test-100" {
 	role_id = "test-1"
 	name = "Terraform Test Role"
 	permissions = {
@@ -23,14 +23,14 @@ resource "authress_role" "test-1" {
 	}
 }`,
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("authress_role.test-1", "role_id", "test-1"),
-					resource.TestCheckResourceAttr("authress_role.test-1", "permissions.one.allow", "true"),
-					resource.TestCheckResourceAttrSet("authress_role.test-1", "last_updated"),
+					resource.TestCheckResourceAttr("authress_role.test-100", "role_id", "test-1"),
+					resource.TestCheckResourceAttr("authress_role.test-100", "permissions.one.allow", "true"),
+					resource.TestCheckResourceAttrSet("authress_role.test-100", "last_updated"),
 				),
 			},
 			// ImportState testing
 			{
-				ResourceName:      "authress_role.test-1",
+				ResourceName:      "authress_role.test-100",
 				ImportState:       true,
 				ImportStateVerify: true,
 				// The last_updated attribute does not exist in the Authress API, therefore there is no value for it during import.
