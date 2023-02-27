@@ -3,6 +3,7 @@ package authress
 import (
 	"context"
 	"os"
+	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -102,6 +103,9 @@ func (p *authressProvider) Configure(ctx context.Context, req provider.Configure
 
 	if !config.CustomDomain.IsNull() {
 		customDomain = config.CustomDomain.ValueString()
+		if !strings.HasPrefix(customDomain, "http") {
+			customDomain = "https://" + customDomain
+		}
 	}
 
 	if !config.AccessKey.IsNull() {

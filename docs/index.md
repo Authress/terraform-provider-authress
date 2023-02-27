@@ -19,10 +19,12 @@ required_providers {
   authress = {
     source  = "authress/authress"
     version = "~> 1.0"
-
-    # Authress custom domain configuration: https://authress.io/app/#/settings?focus=domain
-    custom_domain = "https://login.example.com"
   }
+}
+
+provider "authress" {
+  # Authress custom domain configuration: https://authress.io/app/#/settings?focus=domain
+  custom_domain = "https://login.example.com"
 }
 
 resource "authress_role" "document_admin" {

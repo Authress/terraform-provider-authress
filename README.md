@@ -10,11 +10,11 @@ The Authress terraform provider to automatically configure Authress from Terrafo
 [discuss]: https://discuss.hashicorp.com/c/terraform-providers/31
 
 [terraform-badge]: https://img.shields.io/badge/install-terraform--authress-blue.svg
-[terraform-link]: https://registry.terraform.io/providers/hashicorp/authress/latest/docs
+[terraform-link]: https://registry.terraform.io/providers/authress/authress/latest/docs
 
 ## Installation
 
-Install the `Authress` terraform provider, and review the documentation @ [Authress Terraform Documentation](https://registry.terraform.io/providers/hashicorp/authress/latest/docs)
+Install the `Authress` terraform provider, and review the documentation @ [Authress Terraform Documentation](https://registry.terraform.io/providers/authress/authress/latest/docs)
 
 ```hcl
 terraform {
