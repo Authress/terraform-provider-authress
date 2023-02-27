@@ -2,7 +2,6 @@ package authress
 
 import (
 	"context"
-	"strconv"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -12,105 +11,89 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
-	"terraform-provider-authress/src/sdk"
+	AuthressSdk "terraform-provider-authress/src/sdk"
 )
 
 // Ensure the implementation satisfies the expected interfaces.
 var (
-	_ resource.Resource                = &roleResource{}
-	_ resource.ResourceWithConfigure   = &roleResource{}
-	_ resource.ResourceWithImportState = &roleResource{}
+	_ resource.Resource                = &RoleInterfaceProvider{}
+	_ resource.ResourceWithConfigure   = &RoleInterfaceProvider{}
+	_ resource.ResourceWithImportState = &RoleInterfaceProvider{}
 )
 
 // NewRoleResource is a helper function to simplify the provider implementation.
 func NewRoleResource() resource.Resource {
-	return &roleResource{}
+	return &RoleInterfaceProvider{}
 }
 
-// roleResource is the resource implementation.
-type roleResource struct {
-	client *authress.Client
+// RoleInterfaceProvider is the resource implementation.
+type RoleInterfaceProvider struct {
+	client *AuthressSdk.Client
 }
 
-// roleResourceModel maps the resource schema data.
-type roleResourceModel struct {
-	RoleID       types.String     `tfsdk:"role_id"`
-	Items       []roleItemModel `tfsdk:"items"`
-	LastUpdated types.String     `tfsdk:"last_updated"`
+/*******************************************/
+/* Data stored in Terraform State and Plan */
+/*******************************************/
+type AuthressRoleResource struct {
+	RoleID		types.String	`tfsdk:"role_id"`
+	Name 		types.String	`tfsdk:"name"`
+	Description types.String	`tfsdk:"description"`
+	LastUpdated types.String  	`tfsdk:"last_updated"`
+	Permissions types.Map		`tfsdk:"permissions"`
 }
 
-// roleItemModel maps role item data.
-type roleItemModel struct {
-	Coffee   roleItemCoffeeModel `tfsdk:"coffee"`
-	Quantity types.Int64          `tfsdk:"quantity"`
+type AuthressRolePermissionResource struct {
+	Allow 		types.Bool	`tfsdk:"allow"`
+	Grant		types.Bool	`tfsdk:"grant"`
+	Delegate	types.Bool	`tfsdk:"delegate"`
 }
-
-// roleItemCoffeeModel maps coffee role item data.
-type roleItemCoffeeModel struct {
-	Name        types.String  `tfsdk:"name"`
-	Teaser      types.String  `tfsdk:"teaser"`
-	Description types.String  `tfsdk:"description"`
-	Price       types.Float64 `tfsdk:"price"`
-	Image       types.String  `tfsdk:"image"`
-}
+/*******************************************/
+/*******************************************/
 
 // Metadata returns the data source type name.
-func (r *roleResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
+func (r *RoleInterfaceProvider) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
 	resp.TypeName = req.ProviderTypeName + "_role"
 }
 
 // Schema defines the schema for the data source.
-func (r *roleResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
+func (r *RoleInterfaceProvider) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		Description: "Manages an role.",
-		Attributes: map[string]schema.Attribute{
-			"role_id": schema.StringAttribute{
-				Description: "The identifier of the role.",
-				Computed:    true,
-				PlanModifiers: []planmodifier.String{ stringplanmodifier.UseStateForUnknown() },
+		Attributes: map[string]schema.Attribute {
+			"role_id": schema.StringAttribute {
+				Description: "Unique identifier for the role, can be specified on creation, and used by records to map to permissions.",
+				Required:    true,
+				// https://developer.hashicorp.com/terraform/plugin/framework/resources/plan-modification#requiresreplace
+				PlanModifiers: []planmodifier.String{ stringplanmodifier.RequiresReplace() },
 			},
-			"last_updated": schema.StringAttribute{
+			"last_updated": schema.StringAttribute {
 				Description: "Timestamp of the last Terraform update of the role.",
 				Computed:    true,
 			},
-			"items": schema.ListNestedAttribute{
-				Description: "List of items in the role.",
+			"name": schema.StringAttribute {
+				Description: "A helpful name for this role.",
+				Optional:    true,
+			},
+			"description": schema.StringAttribute {
+				Description: "A description for when to the user as well as additional information.",
+				Optional:    true,
+			},
+			"permissions": schema.MapNestedAttribute {
+				Description: "A map of the permissions. The key of the map is the action the permission grants, can be scoped using `:` and parent actions imply sub-resource permissions, `action:*` or 8action` implies `action:sub-action`. This property is case-insensitive, it will always be cast to lowercase before comparing actions to user permissions.",
 				Required:    true,
 				NestedObject: schema.NestedAttributeObject{
-					Attributes: map[string]schema.Attribute{
-						"quantity": schema.Int64Attribute{
-							Description: "Count of this item in the role.",
-							Required:    true,
+					Attributes: map[string]schema.Attribute {
+						"allow": schema.BoolAttribute {
+							Description: "Does this permission grant the user the ability to execute the action?",
+							Optional:    true,
 						},
-						"coffee": schema.SingleNestedAttribute{
-							Description: "Coffee item in the role.",
-							Required:    true,
-							Attributes: map[string]schema.Attribute{
-								"id": schema.Int64Attribute{
-									Description: "Numeric identifier of the coffee.",
-									Required:    true,
-								},
-								"name": schema.StringAttribute{
-									Description: "Product name of the coffee.",
-									Computed:    true,
-								},
-								"teaser": schema.StringAttribute{
-									Description: "Fun tagline for the coffee.",
-									Computed:    true,
-								},
-								"description": schema.StringAttribute{
-									Description: "Product description of the coffee.",
-									Computed:    true,
-								},
-								"price": schema.Float64Attribute{
-									Description: "Suggested cost of the coffee.",
-									Computed:    true,
-								},
-								"image": schema.StringAttribute{
-									Description: "URI for an image of the coffee.",
-									Computed:    true,
-								},
-							},
+						"grant": schema.BoolAttribute {
+							Description: "Allows the user to give the permission to others without being able to execute the action.",
+							Optional:    true,
+						},
+						"delegate": schema.BoolAttribute {
+							Description: "Allows delegating or granting the permission to others without being able to execute tha action.",
+							Optional:    true,
 						},
 					},
 				},
@@ -120,37 +103,43 @@ func (r *roleResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 }
 
 // Configure adds the provider configured client to the data source.
-func (r *roleResource) Configure(_ context.Context, req resource.ConfigureRequest, _ *resource.ConfigureResponse) {
+func (r *RoleInterfaceProvider) Configure(_ context.Context, req resource.ConfigureRequest, _ *resource.ConfigureResponse) {
 	if req.ProviderData == nil {
 		return
 	}
 
-	r.client = req.ProviderData.(*authress.Client)
+	r.client = req.ProviderData.(*AuthressSdk.Client)
 }
 
 // Create creates the resource and sets the initial Terraform state.
-func (r *roleResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
+func (r *RoleInterfaceProvider) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	// Retrieve values from plan
-	var plan roleResourceModel
-	diags := req.Plan.Get(ctx, &plan)
+	var plannedAuthressRoleResource AuthressRoleResource
+	diags := req.Plan.Get(ctx, &plannedAuthressRoleResource)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
 	// Generate API request body from plan
-	var items []authress.RoleItem
-	for _, item := range plan.Items {
-		items = append(items, authress.RoleItem{
-			Coffee: authress.Coffee{
-				ID: int(item.Coffee.ID.ValueInt64()),
-			},
-			Quantity: int(item.Quantity.ValueInt64()),
-		})
+	authressSdkRole := AuthressSdk.Role {
+		RoleID: plannedAuthressRoleResource.RoleID.ValueString(),
+		Name: plannedAuthressRoleResource.Name.ValueString(),
+		Description: plannedAuthressRoleResource.Description.ValueString(),
+		Permissions: make([]AuthressSdk.Permission, 0, len(plannedAuthressRoleResource.Permissions.Elements())),
+	}
+	for key, value := range plannedAuthressRoleResource.Permissions {
+		authressSdkRolePermissions := AuthressSdk.Permission {
+			Action: key,
+			Allow: value.Allow.ValueBool(),
+			Grant: value.Grant.ValueBool(),
+			Delegate: value.Delegate.ValueBool(),
+		}
+		authressSdkRole.Permissions = append(authressSdkRole.Permissions, authressSdkRolePermissions)
 	}
 
 	// Create new role
-	role, err := r.client.CreateRole(items)
+	_, err := r.client.CreateRole(authressSdkRole)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error creating role",
@@ -160,24 +149,10 @@ func (r *roleResource) Create(ctx context.Context, req resource.CreateRequest, r
 	}
 
 	// Map response body to schema and populate Computed attribute values
-	plan.ID = types.StringValue(strconv.Itoa(role.ID))
-	for itemIndex, item := range role.Items {
-		plan.Items[itemIndex] = roleItemModel{
-			Coffee: roleItemCoffeeModel{
-				ID:          types.Int64Value(int64(item.Coffee.ID)),
-				Name:        types.StringValue(item.Coffee.Name),
-				Teaser:      types.StringValue(item.Coffee.Teaser),
-				Description: types.StringValue(item.Coffee.Description),
-				Price:       types.Float64Value(item.Coffee.Price),
-				Image:       types.StringValue(item.Coffee.Image),
-			},
-			Quantity: types.Int64Value(int64(item.Quantity)),
-		}
-	}
-	plan.LastUpdated = types.StringValue(time.Now().Format(time.RFC850))
+	plannedAuthressRoleResource.LastUpdated = types.StringValue(time.Now().Format(time.RFC850))
 
 	// Set state to fully populated data
-	diags = resp.State.Set(ctx, plan)
+	diags = resp.State.Set(ctx, plannedAuthressRoleResource)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -185,43 +160,40 @@ func (r *roleResource) Create(ctx context.Context, req resource.CreateRequest, r
 }
 
 // Read refreshes the Terraform state with the latest data.
-func (r *roleResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
+func (r *RoleInterfaceProvider) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	// Get current state
-	var state roleResourceModel
-	diags := req.State.Get(ctx, &state)
+	var currentAuthressRoleResource AuthressRoleResource
+	diags := req.State.Get(ctx, &currentAuthressRoleResource)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
 	// Get refreshed role value from Authress
-	role, err := r.client.GetRole(state.ID.ValueString())
+	authressSdkRole, err := r.client.GetRole(currentAuthressRoleResource.RoleID.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Reading Authress Role",
-			"Could not read Authress role ID "+state.ID.ValueString()+": "+err.Error(),
+			"Could not read Authress role ID " + currentAuthressRoleResource.RoleID.ValueString() + ": " + err.Error(),
 		)
 		return
 	}
 
-	// Overwrite items with refreshed state
-	state.Items = []roleItemModel{}
-	for _, item := range role.Items {
-		state.Items = append(state.Items, roleItemModel{
-			Coffee: roleItemCoffeeModel{
-				ID:          types.Int64Value(int64(item.Coffee.ID)),
-				Name:        types.StringValue(item.Coffee.Name),
-				Teaser:      types.StringValue(item.Coffee.Teaser),
-				Description: types.StringValue(item.Coffee.Description),
-				Price:       types.Float64Value(item.Coffee.Price),
-				Image:       types.StringValue(item.Coffee.Image),
-			},
-			Quantity: types.Int64Value(int64(item.Quantity)),
-		})
-	}
+	currentAuthressRoleResource.RoleID = types.StringValue(authressSdkRole.RoleID)
+	currentAuthressRoleResource.Name = types.StringValue(authressSdkRole.Name)
+	currentAuthressRoleResource.Description = types.StringValue(authressSdkRole.Description)
+	currentAuthressRoleResource.Permissions = types.MapValue(types.Map, map[string]AuthressRolePermissionResource)
 
-	// Set refreshed state
-	diags = resp.State.Set(ctx, &state)
+	for _, authressRolePermission := range authressSdkRole.Permissions {
+		currentAuthressRoleResource.Permissions[authressRolePermission.Action] = AuthressRolePermissionResource {
+			Allow: types.BoolValue(authressRolePermission.Allow),
+			Grant: types.BoolValue(authressRolePermission.Grant),
+			Delegate: types.BoolValue(authressRolePermission.Delegate),
+		}
+   }
+
+	// Set refreshed currentAuthressRoleResource
+	diags = resp.State.Set(ctx, &currentAuthressRoleResource)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -229,28 +201,34 @@ func (r *roleResource) Read(ctx context.Context, req resource.ReadRequest, resp 
 }
 
 // Update updates the resource and sets the updated Terraform state on success.
-func (r *roleResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
+func (r *RoleInterfaceProvider) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	// Retrieve values from plan
-	var plan roleResourceModel
-	diags := req.Plan.Get(ctx, &plan)
+	var plannedAuthressRoleResource AuthressRoleResource
+	diags := req.Plan.Get(ctx, &plannedAuthressRoleResource)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	// Generate API request body from plan
-	var authressItems []authress.RoleItem
-	for _, item := range plan.Items {
-		authressItems = append(authressItems, authress.RoleItem{
-			Coffee: authress.Coffee{
-				ID: int(item.Coffee.ID.ValueInt64()),
-			},
-			Quantity: int(item.Quantity.ValueInt64()),
-		})
+	// Generate API request body from plannedAuthressRoleResource
+	authressSdkRole := AuthressSdk.Role {
+		RoleID: plannedAuthressRoleResource.RoleID.ValueString(),
+		Name: plannedAuthressRoleResource.Name.ValueString(),
+		Description: plannedAuthressRoleResource.Description.ValueString(),
+		Permissions: make([]AuthressSdk.Permission, 0, len(plannedAuthressRoleResource.Permissions.Elements())),
+	}
+	for key, value := range plannedAuthressRoleResource.Permissions.Elements() {
+		authressSdkRolePermissions := AuthressSdk.Permission {
+			Action: key,
+			Allow: value.Allow.BoolString(),
+			Grant: value.Grant.BoolString(),
+			Delegate: value.Delegate.BoolString(),
+		}
+		authressSdkRole.Permissions = append(authressSdkRole.Permissions, authressSdkRolePermissions)
 	}
 
 	// Update existing role
-	_, err := r.client.UpdateRole(plan.ID.ValueString(), authressItems)
+	_, err := r.client.UpdateRole(plannedAuthressRoleResource.RoleID.ValueString(), authressSdkRole)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Updating Authress Role",
@@ -259,35 +237,9 @@ func (r *roleResource) Update(ctx context.Context, req resource.UpdateRequest, r
 		return
 	}
 
-	// Fetch updated items from GetRole as UpdateRole items are not
-	// populated.
-	role, err := r.client.GetRole(plan.ID.ValueString())
-	if err != nil {
-		resp.Diagnostics.AddError(
-			"Error Reading Authress Role",
-			"Could not read Authress role ID "+plan.ID.ValueString()+": "+err.Error(),
-		)
-		return
-	}
+	plannedAuthressRoleResource.LastUpdated = types.StringValue(time.Now().Format(time.RFC850))
 
-	// Update resource state with updated items and timestamp
-	plan.Items = []roleItemModel{}
-	for _, item := range role.Items {
-		plan.Items = append(plan.Items, roleItemModel{
-			Coffee: roleItemCoffeeModel{
-				ID:          types.Int64Value(int64(item.Coffee.ID)),
-				Name:        types.StringValue(item.Coffee.Name),
-				Teaser:      types.StringValue(item.Coffee.Teaser),
-				Description: types.StringValue(item.Coffee.Description),
-				Price:       types.Float64Value(item.Coffee.Price),
-				Image:       types.StringValue(item.Coffee.Image),
-			},
-			Quantity: types.Int64Value(int64(item.Quantity)),
-		})
-	}
-	plan.LastUpdated = types.StringValue(time.Now().Format(time.RFC850))
-
-	diags = resp.State.Set(ctx, plan)
+	diags = resp.State.Set(ctx, plannedAuthressRoleResource)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -295,17 +247,17 @@ func (r *roleResource) Update(ctx context.Context, req resource.UpdateRequest, r
 }
 
 // Delete deletes the resource and removes the Terraform state on success.
-func (r *roleResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
+func (r *RoleInterfaceProvider) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	// Retrieve values from state
-	var state roleResourceModel
-	diags := req.State.Get(ctx, &state)
+	var currentAuthressRoleResource AuthressRoleResource
+	diags := req.State.Get(ctx, &currentAuthressRoleResource)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
 	// Delete existing role
-	err := r.client.DeleteRole(state.ID.ValueString())
+	err := r.client.DeleteRole(currentAuthressRoleResource.RoleID.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Deleting Authress Role",
@@ -315,7 +267,7 @@ func (r *roleResource) Delete(ctx context.Context, req resource.DeleteRequest, r
 	}
 }
 
-func (r *roleResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+func (r *RoleInterfaceProvider) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	// Retrieve import ID and save to id attribute
 	resource.ImportStatePassthroughID(ctx, path.Root("role_id"), req, resp)
 }

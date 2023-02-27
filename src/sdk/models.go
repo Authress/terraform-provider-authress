@@ -1,42 +1,15 @@
 package authress
 
-// Order -
-type Order struct {
-	ID    int         `json:"id,omitempty"`
-	Items []OrderItem `json:"items,omitempty"`
-}
-
-// OrderItem -
-type OrderItem struct {
-	Coffee   Coffee `json:"coffee"`
-	Quantity int    `json:"quantity"`
-}
-
 type Role struct {
-	ID          int                `json:"id"`
-	Name        string             `json:"name"`
-	Teaser      string             `json:"teaser"`
-	Collection  string             `json:"collection"`
-	Origin      string             `json:"origin"`
-	Color       string             `json:"color"`
-	Description string             `json:"description"`
-	Price       float64            `json:"price"`
-	Image       string             `json:"image"`
-	Ingredient  []CoffeeIngredient `json:"ingredients"`
+	RoleID	 	string			`json:"roleId"`
+	Name 		string			`json:"name"`
+	Description string 			`json:"description,omitempty"`
+	Permissions []Permission	`json:"permissions"`
 }
 
-// Ingredient -
-type CoffeeIngredient struct {
-	ID       int    `json:"ingredient_id"`
-	Name     string `json:"name"`
-	Quantity int    `json:"quantity"`
-	Unit     string `json:"unit"`
-}
-
-// Ingredient -
-type Ingredient struct {
-	ID       int    `json:"id"`
-	Name     string `json:"name"`
-	Quantity int    `json:"quantity"`
-	Unit     string `json:"unit"`
+type Permission struct {
+	Action 		string 	`json:"action"`
+	Allow 		bool 	`json:"allow"`
+	Grant		bool	`json:"grant"`
+	Delegate	bool	`json:"delegate"`
 }

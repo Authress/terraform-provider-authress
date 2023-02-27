@@ -27,7 +27,7 @@ func (c *Client) GetRoles() ([]Role, error) {
 	return roles, nil
 }
 
-func (c *Client) GetRole(roleID string) ([]Role, error) {
+func (c *Client) GetRole(roleID string) (*Role, error) {
 	req, err := http.NewRequest("GET", fmt.Sprintf("%s/v1/roles/%s", c.HostURL, roleID), nil)
 	if err != nil {
 		return nil, err
@@ -38,13 +38,13 @@ func (c *Client) GetRole(roleID string) ([]Role, error) {
 		return nil, err
 	}
 
-	roles := []Role{}
-	err = json.Unmarshal(body, &roles)
+	role := Role{}
+	err = json.Unmarshal(body, &role)
 	if err != nil {
 		return nil, err
 	}
 
-	return roles, nil
+	return &role, nil
 }
 
 func (c *Client) CreateRole(role Role) (*Role, error) {

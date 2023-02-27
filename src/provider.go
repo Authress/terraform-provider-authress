@@ -28,10 +28,10 @@ func New() provider.Provider {
 // authressProvider is the provider implementation.
 type authressProvider struct{}
 
-// authressProviderModel maps provider schema data to a Go type.
-type authressProviderModel struct {
+// authressSdkTFModel maps provider schema data to a Go type.
+type authressSdkTFModel struct {
 	CustomDomain     types.String `tfsdk:"custom_domain"`
-	AccessKey types.String `tfsdk:"access_key"`
+	AccessKey 		 types.String `tfsdk:"access_key"`
 }
 
 // Metadata returns the provider type name.
@@ -45,13 +45,13 @@ func (p *authressProvider) Schema(_ context.Context, _ provider.SchemaRequest, r
 		Description: "Deploy resources to your Authress account.",
 		Attributes: map[string]schema.Attribute{
 			"custom_domain": schema.StringAttribute{
-				Description: "URI for Authress API.",
+				Description: "Your Authress custom domain, configured here: https://authress.io/app/#/settings?focus=domain or use provided domain: https://authress.io/app/#/api?route=overview",
 				Required: true,
 			},
 			"access_key": schema.StringAttribute{
-				Description: "Password for Authress API. May also be provided via AUTHRESS_KEY environment variable.",
-				Required: true,
-				Sensitive:   true,
+				Description: "The access key for the Authress API. Should be configured by your CI/CD, see https://authress.io/knowledge-base/docs/category/cicd for more information.",
+				Optional: 	true,
+				Sensitive: 	true,
 			},
 		},
 	}
@@ -62,7 +62,7 @@ func (p *authressProvider) Configure(ctx context.Context, req provider.Configure
 	tflog.Info(ctx, "Configuring Authress client")
 
 	// Retrieve provider data from configuration
-	var config authressProviderModel
+	var config authressSdkTFModel
 	diags := req.Config.Get(ctx, &config)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
@@ -148,13 +148,12 @@ func (p *authressProvider) Configure(ctx context.Context, req provider.Configure
 			"Unable to Create Authress API Client",
 			"An unexpected error occurred when creating the Authress API client. "+
 				"If the error is not clear, please contact the provider developers.\n\n"+
-				"Authress Client Error: "+err.Error(),
+				"Authress Client Error: " + err.Error(),
 		)
 		return
 	}
 
-	// Make the Authress client available during DataSource and Resource
-	// type Configure methods.
+	// Make the Authress client available during DataSource and Resource type Configure methods.
 	resp.DataSourceData = client
 	resp.ResourceData = client
 
@@ -163,14 +162,13 @@ func (p *authressProvider) Configure(ctx context.Context, req provider.Configure
 
 // DataSources defines the data sources implemented in the provider.
 func (p *authressProvider) DataSources(_ context.Context) []func() datasource.DataSource {
-	return []func() datasource.DataSource{
-		NewCoffeesDataSource,
-	}
+	return []func() datasource.DataSource{}
 }
 
 // Resources defines the resources implemented in the provider.
 func (p *authressProvider) Resources(_ context.Context) []func() resource.Resource {
 	return []func() resource.Resource{
-		NewOrderResource,
+		// Linked to in the role.go
+		NewRoleResource,
 	}
 }

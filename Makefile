@@ -1,5 +1,8 @@
 default: install
 
+tidy:
+	go mod tidy
+
 docs:
 	go generate ./...
 
