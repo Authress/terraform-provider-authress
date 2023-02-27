@@ -9,10 +9,10 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/provider"
 	"github.com/hashicorp/terraform-plugin-framework/provider/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
-	"github.com/hashicorp/terraform-plugin-framework/types"
+	TerraformType "github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 
-	"terraform-provider-authress/src/sdk"
+	AuthressSdk "terraform-provider-authress/src/sdk"
 )
 
 // Ensure the implementation satisfies the expected interfaces
@@ -30,8 +30,8 @@ type authressProvider struct{}
 
 // authressSdkTFModel maps provider schema data to a Go type.
 type authressSdkTFModel struct {
-	CustomDomain     types.String `tfsdk:"custom_domain"`
-	AccessKey 		 types.String `tfsdk:"access_key"`
+	CustomDomain     TerraformType.String `tfsdk:"custom_domain"`
+	AccessKey 		 TerraformType.String `tfsdk:"access_key"`
 }
 
 // Metadata returns the provider type name.
@@ -45,11 +45,11 @@ func (p *authressProvider) Schema(_ context.Context, _ provider.SchemaRequest, r
 		Description: "Deploy resources to your Authress account.",
 		Attributes: map[string]schema.Attribute{
 			"custom_domain": schema.StringAttribute{
-				Description: "Your Authress custom domain, configured here: https://authress.io/app/#/settings?focus=domain or use provided domain: https://authress.io/app/#/api?route=overview",
+				Description: "Your Authress custom domain. [Configured a custom domain for Account](https://authress.io/app/#/settings?focus=domain) or use [provided domain](https://authress.io/app/#/api?route=overview).",
 				Required: true,
 			},
 			"access_key": schema.StringAttribute{
-				Description: "The access key for the Authress API. Should be configured by your CI/CD, see https://authress.io/knowledge-base/docs/category/cicd for more information.",
+				Description: "The access key for the Authress API. Should be [configured by your CI/CD](https://authress.io/knowledge-base/docs/category/cicd) for more information.",
 				Optional: 	true,
 				Sensitive: 	true,
 			},
@@ -124,8 +124,8 @@ func (p *authressProvider) Configure(ctx context.Context, req provider.Configure
 	if accessKey == "" {
 		resp.Diagnostics.AddAttributeError(
 			path.Root("access_key"),
-			"Missing Authress API Password",
-			"The provider cannot create the Authress API client as there is a missing or empty value for the Authress API password. "+
+			"Missing Authress API Access Key",
+			"The provider cannot create the Authress API client as there is a missing or empty value for the Authress API access_key. "+
 				"Set the password value in the configuration or use the AUTHRESS_PASSWORD environment variable. "+
 				"If either is already set, ensure the value is not empty.",
 		)
@@ -142,7 +142,7 @@ func (p *authressProvider) Configure(ctx context.Context, req provider.Configure
 	tflog.Debug(ctx, "Creating Authress client")
 
 	// Create a new Authress client using the configuration values
-	client, err := authress.NewClient(customDomain, accessKey)
+	client, err := AuthressSdk.NewClient(customDomain, accessKey)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Unable to Create Authress API Client",

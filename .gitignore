@@ -39,4 +39,3 @@ terraform
 
 # Exclude the built provider
 terraform-provider-authress
-docs
