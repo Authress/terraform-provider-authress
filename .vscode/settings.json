@@ -1,6 +1,9 @@
 {
     "cSpell.words": [
         "automapper",
+        "mapvalidator",
+        "stringplanmodifier",
+        "stringvalidator",
         "tflog"
     ]
 }

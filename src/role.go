@@ -2,13 +2,17 @@ package authress
 
 import (
 	"context"
+	"regexp"
 	"time"
 
+	"github.com/hashicorp/terraform-plugin-framework-validators/mapvalidator"
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	TerraformType "github.com/hashicorp/terraform-plugin-framework/types"
 
 	AuthressSdk "terraform-provider-authress/src/sdk"
@@ -68,6 +72,13 @@ func (r *RoleInterfaceProvider) Schema(_ context.Context, _ resource.SchemaReque
 				Required:    true,
 				// https://developer.hashicorp.com/terraform/plugin/framework/resources/plan-modification#requiresreplace
 				PlanModifiers: []planmodifier.String{ stringplanmodifier.RequiresReplace() },
+				Validators: []validator.String{
+					stringvalidator.LengthBetween(1, 64),
+					stringvalidator.RegexMatches(
+						regexp.MustCompile(`^[a-zA-Z0-9-._:@]+$`),
+						"must contain only alphanumeric characters and [-._:]",
+					),
+				},
 			},
 			"id": schema.StringAttribute {
 				Description: "Legacy Terraform property that is not actually used",
@@ -80,15 +91,30 @@ func (r *RoleInterfaceProvider) Schema(_ context.Context, _ resource.SchemaReque
 			"name": schema.StringAttribute {
 				Description: "A helpful name for this role. The name displays in the Authress Management Portal",
 				Required:    true,
+				Validators: []validator.String{
+					stringvalidator.LengthBetween(1, 128),
+				},
 			},
 			"description": schema.StringAttribute {
-				Description:	"A description for when to the user as well as additional information.",
+				Description:	"An extended description field that can be used to store additional information about the usage of the role.",
 				Optional:	    true,
 				Computed: 		true,
+				Validators: []validator.String{
+					stringvalidator.LengthBetween(0, 1024),
+				},
 			},
 			"permissions": schema.MapNestedAttribute {
 				Description: "A map of the permissions. The key of the map is the action the permission grants, can be scoped using `:` and parent actions imply sub-resource permissions, `action:*` or `action` implies `action:sub-action`. This property is case-insensitive, it will always be cast to lowercase before comparing actions to user permissions.",
 				Required:    true,
+				Validators: []validator.Map{
+					mapvalidator.KeysAre(
+						stringvalidator.LengthBetween(1, 64),
+						stringvalidator.RegexMatches(
+							regexp.MustCompile(`^(?!.*::.*)([*]|[a-zA-Z0-9-_:]+(:[*])?)$`),
+							"must contain only alphanumeric characters and colons used as namespace separators",
+						),
+					),
+				},
 				NestedObject: schema.NestedAttributeObject{
 					Attributes: map[string]schema.Attribute {
 						"allow": schema.BoolAttribute {
