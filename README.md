@@ -21,11 +21,13 @@ terraform {
   required_providers {
     authress = {
       source  = "authress/authress"
-      
-      # Specify your Authress custom domain, configured at https://authress.io/app/#/settings?focus=domain
-      custom_domain = "https://login.example.com"
     }
   }
+}
+
+provider "authress" {
+  # Specify your Authress custom domain, configured at https://authress.io/app/#/settings?focus=domain
+  custom_domain = "https://login.example.com"
 }
 ```
 

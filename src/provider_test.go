@@ -9,7 +9,7 @@ const (
 	// providerConfig is a shared configuration to combine with the actual test configuration so the Authress client is properly configured.
 	providerConfig = `
 provider "authress" {
-  custom_domain     = "https://test-domain.api-eu-west.authress.io"
+  custom_domain     = "https://authress-test.authress.com"
 }`)
 
 var (

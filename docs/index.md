@@ -18,7 +18,7 @@ The [Authress Knowledge Base](https://authress.io/knowledge-base/docs/category/i
 required_providers {
   authress = {
     source  = "authress/authress"
-    version = "0.2"
+    version = "~> 1.0"
 
     # Authress custom domain configuration: https://authress.io/app/#/settings?focus=domain
     custom_domain = "https://login.example.com"

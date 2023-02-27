@@ -115,9 +115,8 @@ func (p *authressProvider) Configure(ctx context.Context, req provider.Configure
 		resp.Diagnostics.AddAttributeError(
 			path.Root("custom_domain"),
 			"Missing Authress API CustomDomain",
-			"The provider cannot create the Authress API client as there is a missing or empty value for the Authress API custom_domain. "+
-				"Set the custom_domain value in the configuration or use the AUTHRESS_HOST environment variable. "+
-				"If either is already set, ensure the value is not empty.",
+			"Cannot connect to the Authress API: Missing Authress custom_domain. " +
+				"Set the 'custom_domain' value by adding a terraform provider block for authress",
 		)
 	}
 
@@ -125,9 +124,8 @@ func (p *authressProvider) Configure(ctx context.Context, req provider.Configure
 		resp.Diagnostics.AddAttributeError(
 			path.Root("access_key"),
 			"Missing Authress API Access Key",
-			"The provider cannot create the Authress API client as there is a missing or empty value for the Authress API access_key. "+
-				"Set the password value in the configuration or use the AUTHRESS_PASSWORD environment variable. "+
-				"If either is already set, ensure the value is not empty.",
+			"Cannot connect to the Authress API: Missing Authress Access Key. "+
+				"Set the 'access_key' value by running the CI/CD Automation https://authress.io/knowledge-base/docs/category/cicd, or adding a terraform provider block for authress",
 		)
 	}
 

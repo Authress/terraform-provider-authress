@@ -1,10 +1,27 @@
 terraform {
   required_providers {
     authress = {
-      version = "0.2"
-      source  = "hashicorp.com/authress/authress"
+      version = "~> 1.0"
+      source  = "authress/authress"
     }
   }
 }
 
-provider "authress" {}
+provider "authress" {
+  custom_domain = "https://authress-test.authress.com"
+}
+
+# resource "authress_role" "test-100" {
+#     role_id = "test-1"
+#     name = "Terraform Test Role"
+#     permissions = {
+#       "one" = {
+#         "allow" = true
+#       }
+
+#       "two" = {
+#         "allow" = true
+#         "grant" = true
+#       }
+#     }
+#   }
