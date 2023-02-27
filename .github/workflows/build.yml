@@ -34,6 +34,7 @@ jobs:
 
   goreleaser:
     if: github.repository_owner == 'Authress' && github.ref != 'refs/heads/main' && github.event_name == 'push'
+    needs: build
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -57,7 +58,7 @@ jobs:
         uses: goreleaser/goreleaser-action@v2
         with:
           version: latest
-          args: release --rm-dist
+          args: release --clean
         env:
           GPG_FINGERPRINT: ${{ steps.import_gpg.outputs.fingerprint }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
