@@ -16,19 +16,41 @@ Manages an Authress `Role`. Roles are assigned to `Users` for specific `Resource
 
 ### Required
 
-- `role_id` - `string` - Unique identifier for the role, can be specified on creation, and used by records to map to permissions.
-- `permissions` `map` - A map of the permissions. The key of the map is the `action` the permission grants, and the value is the permission configuration. This permission key action is case-insensitive. (see [below for permissions properties](#nestedatt--permissions))
+- `role_id` `string` - Unique identifier for the role, can be specified on creation, and used by records to map to permissions.
+- `permissions` [`permissions_map`](#nestedatt--permissions) - A map of the permissions. The key of the map is the `action` the permission grants, and the value is the permission configuration. This permission key action is case-insensitive. (see [below for permissions properties](#nestedatt--permissions))
 
 ### Optional
 
-- `name` - `string` - A helpful name for this role. The name displays in the Authress Management Portal.
-- `description` - `string` - An extended description field that can be used to store additional information about the usage of the role.
+- `name` `string` - A helpful name for this role. The name displays in the Authress Management Portal.
+- `description` `string` - An extended description field that can be used to store additional information about the usage of the role.
 
 <a id="nestedatt--permissions"></a>
-### `permissions` Schema
+### `permissions_map` Schema
+Map Key: `permission action` - The key of the permissions resource is the action the user will be authorized to perform.
 
-- `allow` - `bool` - Does this permission grant the user the ability to execute the action?
-- `delegate` - `bool` - Allows delegating or granting the permission to others without being able to execute the action.
-- `grant` - `bool` - Allows the user to give the permission to others without being able to execute the action.
+The Permissions is a map of an action to permissions configuration:
+
+- `allow` `bool` - Does this permission grant the user the ability to execute the action?
+- `delegate` `bool` - Allows delegating or granting the permission to others without being able to execute the action.
+- `grant` `bool` - Allows the user to give the permission to others without being able to execute the action.
 
 
+## Examples
+
+### Document Admin Role
+This role has the permissions `allow` to `documents:read` and `allow` to `documents:write`.
+
+```hcl
+resource "authress_role" "document_admin" {
+  role_id = "documents_admin"
+  name = "Documents Administrator"
+  permissions = {
+    "documents:read" = {
+      allow = true
+    }
+    "documents:write" = {
+      allow = true
+    }
+  }
+}
+```
