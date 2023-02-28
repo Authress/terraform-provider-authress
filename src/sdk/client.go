@@ -12,17 +12,19 @@ const HostURL string = "http://localhost:19090"
 
 // Client -
 type Client struct {
-	HostURL    string
-	HTTPClient *http.Client
-	AccessKey  string
+	HostURL    	string
+	HTTPClient 	*http.Client
+	AccessKey  	string
+	Version		string
 }
 
 // NewClient -
-func NewClient(customDomain string, accessKey string) (*Client, error) {
+func NewClient(customDomain string, accessKey string, version string) (*Client, error) {
 	c := Client{
 		HTTPClient: &http.Client{Timeout: 10 * time.Second},
 		AccessKey: accessKey,
 		HostURL: customDomain,
+		Version: version,
 	}
 
 	return &c, nil
@@ -30,7 +32,7 @@ func NewClient(customDomain string, accessKey string) (*Client, error) {
 
 func (c *Client) doRequest(req *http.Request) ([]byte, error) {
 	req.Header.Set("Authorization", "Bearer " + c.AccessKey)
-	req.Header.Set("User-Agent", "Terraform SDK")
+	req.Header.Set("User-Agent", "Terraform SDK " + c.Version)
 
 	res, err := c.HTTPClient.Do(req)
 	if err != nil {

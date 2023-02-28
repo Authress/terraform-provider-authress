@@ -144,7 +144,7 @@ func (p *authressProvider) Configure(ctx context.Context, req provider.Configure
 	tflog.Debug(ctx, "Creating Authress client")
 
 	// Create a new Authress client using the configuration values
-	client, err := AuthressSdk.NewClient(customDomain, accessKey)
+	client, err := AuthressSdk.NewClient(customDomain, accessKey, GetBuildInfo().Version)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Unable to Create Authress API Client",

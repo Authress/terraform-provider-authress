@@ -22,9 +22,10 @@ jobs:
 
     - name: Build
       run: |
+        export VERSION=${GITHUB_REF/refs\/heads\/release\//}.$GITHUB_RUN_NUMBER
+        sed -i "s/0.0.0/${VERSION}/g" src/version.go
         make install
         make test
-        make docs
 
     - name: Create Github Release and Tag
       if: github.repository_owner == 'Authress' && github.ref != 'refs/heads/main' && github.event_name == 'push'
