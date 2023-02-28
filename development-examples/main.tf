@@ -1,7 +1,7 @@
 terraform {
   required_providers {
     authress = {
-      version = "~> 1.0.18"
+      version = "~> 1.0.20"
       source  = "authress/authress"
     }
   }

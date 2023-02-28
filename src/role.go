@@ -82,31 +82,31 @@ func (r *RoleInterfaceProvider) Schema(_ context.Context, _ resource.SchemaReque
 				},
 			},
 			"id": schema.StringAttribute {
-				Description: "Legacy Terraform property that is not actually used",
-				Computed:    true,
+				Description:	"Legacy Terraform property that is not actually used",
+				Computed:   	true,
 			},
 			"last_updated": schema.StringAttribute {
-				Description: "Timestamp of the last Terraform update of the role.",
-				Computed:    true,
+				Description:	"Timestamp of the last Terraform update of the role.",
+				Computed:   	true,
 			},
 			"name": schema.StringAttribute {
-				Description: "A helpful name for this role. The name displays in the Authress Management Portal",
-				Required:    true,
-				Validators: []validator.String{
+				Description:	"A helpful name for this role. The name displays in the Authress Management Portal",
+				Required:   	true,
+				Validators:		[]validator.String{
 					stringvalidator.LengthBetween(1, 128),
 				},
 			},
 			"description": schema.StringAttribute {
 				Description:	"An extended description field that can be used to store additional information about the usage of the role.",
 				Optional:	    true,
-				Computed: 		true,
-				Validators: []validator.String{
+				Computed:		true,
+				Validators: 	[]validator.String{
 					stringvalidator.LengthBetween(0, 1024),
 				},
 			},
 			"permissions": schema.MapNestedAttribute {
 				Description: "A map of the permissions. The key of the map is the action the permission grants, can be scoped using `:` and parent actions imply sub-resource permissions, `action:*` or `action` implies `action:sub-action`. This property is case-insensitive, it will always be cast to lowercase before comparing actions to user permissions.",
-				Required:    true,
+				Required:	true,
 				Validators: []validator.Map{
 					mapvalidator.KeysAre(
 						stringvalidator.LengthBetween(1, 64),
@@ -119,18 +119,22 @@ func (r *RoleInterfaceProvider) Schema(_ context.Context, _ resource.SchemaReque
 				NestedObject: schema.NestedAttributeObject{
 					Attributes: map[string]schema.Attribute {
 						"allow": schema.BoolAttribute {
-							Description: "Does this permission grant the user the ability to execute the action?",
-							Required:    true,
+							Description:	"Does this permission grant the user the ability to execute the action?",
+							Optional: 		true,
+							Computed:		true,
+							PlanModifiers: []planmodifier.Bool{ boolDefault(false) },
 						},
 						"grant": schema.BoolAttribute {
 							Description:	"Allows the user to give the permission to others without being able to execute the action.",
 							Optional:   	true,
-							Computed: 		true,
+							Computed:		true,
+							PlanModifiers: []planmodifier.Bool{ boolDefault(false) },
 						},
 						"delegate": schema.BoolAttribute {
 							Description: 	"Allows delegating or granting the permission to others without being able to execute the action.",
 							Optional:    	true,
-							Computed: 		true,
+							Computed:		true,
+							PlanModifiers: []planmodifier.Bool{ boolDefault(false) },
 						},
 					},
 				},

@@ -30,6 +30,7 @@ func NewClient(customDomain string, accessKey string) (*Client, error) {
 
 func (c *Client) doRequest(req *http.Request) ([]byte, error) {
 	req.Header.Set("Authorization", "Bearer " + c.AccessKey)
+	req.Header.Set("User-Agent", "Terraform SDK")
 
 	res, err := c.HTTPClient.Do(req)
 	if err != nil {
