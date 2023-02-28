@@ -13,7 +13,7 @@ func (c *Client) GetRoles() ([]Role, error) {
 		return nil, err
 	}
 
-	body, err := c.doRequest(req)
+	body, _, err := c.doRequest(req)
 	if err != nil {
 		return nil, err
 	}
@@ -33,7 +33,10 @@ func (c *Client) GetRole(roleID string) (*Role, error) {
 		return nil, err
 	}
 
-	body, err := c.doRequest(req)
+	body, status, err := c.doRequest(req)
+	if status == http.StatusNotFound {
+		return nil, nil
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -58,7 +61,7 @@ func (c *Client) CreateRole(role Role) (*Role, error) {
 		return nil, err
 	}
 
-	body, err := c.doRequest(req)
+	body, _, err := c.doRequest(req)
 	if err != nil {
 		return nil, err
 	}
@@ -83,7 +86,7 @@ func (c *Client) UpdateRole(roleID string, role Role) (*Role, error) {
 		return nil, err
 	}
 
-	body, err := c.doRequest(req)
+	body, _, err := c.doRequest(req)
 	if err != nil {
 		return nil, err
 	}
@@ -104,7 +107,11 @@ func (c *Client) DeleteRole(roleID string) error {
 		return err
 	}
 
-	_, err = c.doRequest(req)
+	_, status, err := c.doRequest(req)
+
+	if status < http.StatusInternalServerError {
+		return nil
+	}
 
 	if err != nil {
 		return err

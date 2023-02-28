@@ -205,6 +205,14 @@ func (r *RoleInterfaceProvider) Read(ctx context.Context, req resource.ReadReque
 		return
 	}
 
+	if authressSdkRole == nil {
+		resp.Diagnostics.AddError(
+			"Authress Role exists in the Terraform plan but does not exist in Authress:",
+			GetErrorWrapper("Either recreate the role in the Authress Management Portal or remove it from your state file. Role ID:" + currentAuthressRoleResource.RoleID.ValueString()),
+		)
+		return
+	}
+
 	// Set refreshed currentAuthressRoleResource
 	currentAuthressRoleResource = MapSdkRoleToTerraform(authressSdkRole)
 	diags = resp.State.Set(ctx, &currentAuthressRoleResource)

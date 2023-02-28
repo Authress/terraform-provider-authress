@@ -30,24 +30,24 @@ func NewClient(customDomain string, accessKey string, version string) (*Client, 
 	return &c, nil
 }
 
-func (c *Client) doRequest(req *http.Request) ([]byte, error) {
+func (c *Client) doRequest(req *http.Request) ([]byte, int, error) {
 	req.Header.Set("Authorization", "Bearer " + c.AccessKey)
 	req.Header.Set("User-Agent", "Terraform SDK " + c.Version)
 
 	res, err := c.HTTPClient.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	defer res.Body.Close()
 
 	body, err := ioutil.ReadAll(res.Body)
 	if err != nil {
-		return nil, err
+		return nil, res.StatusCode, err
 	}
 
 	if res.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("status: %d, body: %s", res.StatusCode, body)
+		return nil, res.StatusCode, fmt.Errorf("status: %d, body: %s", res.StatusCode, body)
 	}
 
-	return body, err
+	return body, res.StatusCode, err
 }
