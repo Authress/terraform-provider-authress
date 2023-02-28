@@ -1,14 +1,14 @@
 terraform {
   required_providers {
     authress = {
-      version = "~> 1.0"
+      version = "~> 1.0.18"
       source  = "authress/authress"
     }
   }
 }
 
 provider "authress" {
-  custom_domain = "https://authress-test.authress.com"
+  custom_domain = "authress-test.authress.com"
 }
 
 # resource "authress_role" "test-100" {

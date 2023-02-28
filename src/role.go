@@ -3,6 +3,7 @@ package authress
 import (
 	"context"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/mapvalidator"
@@ -110,7 +111,7 @@ func (r *RoleInterfaceProvider) Schema(_ context.Context, _ resource.SchemaReque
 					mapvalidator.KeysAre(
 						stringvalidator.LengthBetween(1, 64),
 						stringvalidator.RegexMatches(
-							regexp.MustCompile(`^(?!.*::.*)([*]|[a-zA-Z0-9-_:]+(:[*])?)$`),
+							regexp.MustCompile(`^([*]|[a-zA-Z0-9-_:]+(:[*])?)$`),
 							"must contain only alphanumeric characters and colons used as namespace separators",
 						),
 					),
@@ -163,10 +164,7 @@ func (r *RoleInterfaceProvider) Create(ctx context.Context, req resource.CreateR
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Authress API Response: Attempted to create role:",
-			"\n************************************************************\nError Details:\n\n" +
-			"Could not create role, unexpected error: " +
-			err.Error() +
-			"\n************************************************************\n\n",
+			GetErrorWrapper("Could not create role, unexpected error: " + err.Error()),
 		)
 		return
 	}
@@ -198,10 +196,7 @@ func (r *RoleInterfaceProvider) Read(ctx context.Context, req resource.ReadReque
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Authress API Response: Attempted to get role:",
-			"\n************************************************************\nError Details:\n\n" +
-			"Could not read Authress role ID " + currentAuthressRoleResource.RoleID.ValueString() + ": " +
-			err.Error() +
-			"\n************************************************************\n\n",
+			GetErrorWrapper("Could not read Authress role ID " + currentAuthressRoleResource.RoleID.ValueString() + ": " + err.Error()),
 		)
 		return
 	}
@@ -233,10 +228,7 @@ func (r *RoleInterfaceProvider) Update(ctx context.Context, req resource.UpdateR
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Authress API Response: Attempted to update role:",
-			"\n************************************************************\nError Details:\n\n" +
-			"Could not update role, unexpected error: " +
-			err.Error() +
-			"\n************************************************************\n\n",
+			GetErrorWrapper("Could not update role, unexpected error: " + err.Error()),
 		)
 		return
 	}
@@ -266,10 +258,7 @@ func (r *RoleInterfaceProvider) Delete(ctx context.Context, req resource.DeleteR
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Authress API Response: Attempted to delete role:",
-			"\n************************************************************\nError Details:\n\n" +
-			"Could not delete role, unexpected error: " +
-			err.Error() +
-			"\n************************************************************\n\n",
+			GetErrorWrapper("Could not delete role, unexpected error: " + err.Error()),
 		)
 		return
 	}
@@ -318,4 +307,13 @@ func MapTerraformRoleToSdk(terraformRole *AuthressRoleResource) (AuthressSdk.Rol
 	}
 
    return authressSdkRole
+}
+func GetErrorWrapper(errorString string) (string) {
+	responseString := errorString
+	if (strings.Contains(errorString, "invalid character '<' looking for")) {
+		responseString = "The custom_domain configured is not valid, please review the Authress provider configuration."
+	}
+	return "\n************************************************************\nError Details:\n\n" +
+	responseString +
+	"\n************************************************************\n\n"
 }
