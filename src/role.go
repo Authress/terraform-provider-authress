@@ -16,7 +16,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	TerraformType "github.com/hashicorp/terraform-plugin-framework/types"
 
-	AuthressSdk "terraform-provider-authress/src/sdk"
+	AuthressSdk "github.com/authress/terraform-provider-authress/src/sdk"
 )
 
 // Ensure the implementation satisfies the expected interfaces.

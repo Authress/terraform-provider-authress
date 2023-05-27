@@ -1,4 +1,4 @@
-module terraform-provider-authress
+module github.com/authress/terraform-provider-authress
 
 go 1.18
 

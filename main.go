@@ -2,7 +2,8 @@ package main
 
 import (
 	"context"
-	authress "terraform-provider-authress/src"
+
+	authress "github.com/authress/terraform-provider-authress/src"
 
 	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 )
