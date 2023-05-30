@@ -23,6 +23,7 @@ jobs:
     - name: Build
       run: |
         export VERSION=`echo $GITHUB_REF | sed -e "s/refs\/heads\///g" -e "s/release\///g"`
+        # This should actually be set using: https://www.digitalocean.com/community/tutorials/using-ldflags-to-set-version-information-for-go-applications
         sed -i "s/0.0.0/${VERSION}/g" src/version.go
         make install
         make test
