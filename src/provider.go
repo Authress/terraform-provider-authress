@@ -46,11 +46,11 @@ func (p *authressProvider) Schema(_ context.Context, _ provider.SchemaRequest, r
 		Description: "Deploy resources to your Authress account.",
 		Attributes: map[string]schema.Attribute{
 			"custom_domain": schema.StringAttribute{
-				Description: "Your Authress custom domain. [Configured a custom domain for Account](https://authress.io/app/#/settings?focus=domain) or use [provided domain](https://authress.io/app/#/api?route=overview).",
+				Description: "Your Authress custom domain. [Configure a custom domain for Authress account](https://authress.io/app/#/settings?focus=domain) or use the [provided domain](https://authress.io/app/#/api?route=overview).",
 				Required: true,
 			},
 			"access_key": schema.StringAttribute{
-				Description: "The access key for the Authress API. Should be [configured by your CI/CD](https://authress.io/knowledge-base/docs/category/cicd) for more information.",
+				Description: "The access key for the Authress API. Should be [configured by your CI/CD](https://authress.io/knowledge-base/docs/category/cicd) automatically.",
 				Optional: 	true,
 				Sensitive: 	true,
 			},
