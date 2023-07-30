@@ -18,7 +18,7 @@ The [Authress Knowledge Base](https://authress.io/knowledge-base/docs/category/i
 required_providers {
   authress = {
     source  = "authress/authress"
-    version = "~> 1.0"
+    version = "~> 2.0"
   }
 }
 
