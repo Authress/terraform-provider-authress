@@ -12,7 +12,7 @@ provider "authress" {
 }
 
 # resource "authress_role" "test-100" {
-#     role_id = "test-1"
+#     role_id = "ro_test-1"
 #     name = "Terraform Test Role"
 #     permissions = {
 #       "one" = {

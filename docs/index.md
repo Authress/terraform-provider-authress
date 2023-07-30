@@ -28,7 +28,7 @@ provider "authress" {
 }
 
 resource "authress_role" "document_admin" {
-  role_id = "documents_admin"
+  role_id = "ro_documents_admin"
   name = "Documents Administrator"
   permissions = {
     "documents:read" = {

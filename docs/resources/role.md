@@ -16,7 +16,7 @@ Manages an Authress `Role`. Roles are assigned to `Users` for specific `Resource
 
 ### Required
 
-- `role_id` `string` - Unique identifier for the role, can be specified on creation, and used by records to map to permissions.
+- `role_id` `string` - Unique identifier for the role, can be specified on creation, and used by records to map to permissions. Must begin with the prefix `ro_`.
 - `permissions` [`permissions_map`](#nestedatt--permissions) - A map of the permissions. The key of the map is the `action` the permission grants, and the value is the permission configuration. This permission key action is case-insensitive. (see [below for permissions properties](#nestedatt--permissions))
 
 ### Optional
@@ -42,7 +42,7 @@ This role has the permissions `allow` to `documents:read` and `allow` to `docume
 
 ```hcl
 resource "authress_role" "document_admin" {
-  role_id = "documents_admin"
+  role_id = "ro_documents_admin"
   name = "Documents Administrator"
   permissions = {
     "documents:read" = {

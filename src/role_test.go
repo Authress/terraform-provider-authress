@@ -14,7 +14,7 @@ func TestRoleResource(t *testing.T) {
 			{
 				Config: providerConfig + `
 resource "authress_role" "test-100" {
-	role_id = "test-1"
+	role_id = "lo_test-1"
 	name = "Terraform Test Role"
 	permissions = {
 		"one" = {
@@ -23,7 +23,7 @@ resource "authress_role" "test-100" {
 	}
 }`,
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("authress_role.test-100", "role_id", "test-1"),
+					resource.TestCheckResourceAttr("authress_role.test-100", "role_id", "ro_test-1"),
 					resource.TestCheckResourceAttr("authress_role.test-100", "permissions.one.allow", "true"),
 					resource.TestCheckResourceAttrSet("authress_role.test-100", "last_updated"),
 				),
@@ -40,7 +40,7 @@ resource "authress_role" "test-100" {
 			{
 				Config: providerConfig + `
 resource "authress_role" "test-2" {
-	role_id = "test-2"
+	role_id = "ro_test-2"
 	name = "Terraform Test Role 2"
 	permissions = {
 		"two" = {
@@ -49,7 +49,7 @@ resource "authress_role" "test-2" {
 	}
 }`,
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("authress_role.test-2", "role_id", "test-2"),
+					resource.TestCheckResourceAttr("authress_role.test-2", "role_id", "ro_test-2"),
 					resource.TestCheckResourceAttr("authress_role.test-2", "permissions.two.allow", "true"),
 					resource.TestCheckResourceAttrSet("authress_role.test-2", "last_updated"),
 				),

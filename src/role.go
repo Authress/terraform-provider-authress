@@ -76,8 +76,8 @@ func (r *RoleInterfaceProvider) Schema(_ context.Context, _ resource.SchemaReque
 				Validators: []validator.String{
 					stringvalidator.LengthBetween(1, 64),
 					stringvalidator.RegexMatches(
-						regexp.MustCompile(`^[a-zA-Z0-9-._:@]+$`),
-						"must contain only alphanumeric characters and [-._:]",
+						regexp.MustCompile(`^ro_[a-zA-Z0-9-._:@]+$`),
+						"must begin with the prefix ro_ and contain only alphanumeric characters and [-._:]",
 					),
 				},
 			},
