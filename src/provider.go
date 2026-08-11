@@ -5,6 +5,8 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"net/url"
 	"os"
 	"regexp"
@@ -76,7 +78,7 @@ func (p *authressProvider) Configure(ctx context.Context, req provider.Configure
 	}
 
 	// Decode the JWT payload (no signature verification) to extract aud claim
-	apiUrl, err := extractApiUrlFromJwt(jwtToken)
+	audUrl, err := extractApiUrlFromJwt(jwtToken)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Invalid Authress Token",
@@ -85,12 +87,32 @@ func (p *authressProvider) Configure(ctx context.Context, req provider.Configure
 		return
 	}
 
-	// Construct the SDK client
-	parsedUrl, err := url.Parse(apiUrl)
+	// Extract account ID from aud URL (https://{accountId}.api.authress.*)
+	accountId, err := extractAccountIdFromAud(audUrl)
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Invalid Authress Token",
+			err.Error(),
+		)
+		return
+	}
+
+	// Resolve the custom domain by calling GET /v1/accounts/{accountId}
+	customDomain, err := resolveCustomDomain(audUrl, accountId, jwtToken)
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Failed to resolve Authress custom domain",
+			fmt.Sprintf("Could not resolve custom domain for account %s: %s", accountId, err.Error()),
+		)
+		return
+	}
+
+	// Use the custom domain as the SDK base URL
+	parsedUrl, err := url.Parse(customDomain)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Invalid API URL",
-			fmt.Sprintf("Failed to parse API URL from token aud claim: %s", err.Error()),
+			fmt.Sprintf("Failed to parse resolved custom domain URL: %s", err.Error()),
 		)
 		return
 	}
@@ -104,7 +126,7 @@ func (p *authressProvider) Configure(ctx context.Context, req provider.Configure
 	resp.DataSourceData = client
 	resp.ResourceData = client
 
-	tflog.Info(ctx, "Configured Authress client", map[string]any{"api_url": apiUrl})
+	tflog.Info(ctx, "Configured Authress client", map[string]any{"api_url": customDomain, "account_id": accountId})
 }
 
 func (p *authressProvider) DataSources(_ context.Context) []func() datasource.DataSource {
@@ -160,4 +182,62 @@ func extractApiUrlFromJwt(token string) (string, error) {
 	}
 
 	return aud, nil
+}
+
+// extractAccountIdFromAud extracts the account ID from an aud URL like https://{accountId}.api.authress.io
+func extractAccountIdFromAud(audUrl string) (string, error) {
+	parsed, err := url.Parse(audUrl)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse aud URL: %w", err)
+	}
+
+	// Host is {accountId}.api.authress.{tld}
+	parts := strings.SplitN(parsed.Host, ".", 2)
+	if len(parts) < 2 {
+		return "", fmt.Errorf("unexpected aud host format: %s", parsed.Host)
+	}
+
+	return parts[0], nil
+}
+
+// resolveCustomDomain calls GET {audUrl}/v1/accounts/{accountId} and returns https://{webHostFqdn}
+func resolveCustomDomain(audUrl, accountId, jwtToken string) (string, error) {
+	reqUrl := fmt.Sprintf("%s/v1/accounts/%s", audUrl, accountId)
+
+	req, err := http.NewRequest("GET", reqUrl, nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to build request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+jwtToken)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("HTTP request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		body, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("accounts API returned %d: %s", resp.StatusCode, string(body))
+	}
+
+	var account struct {
+		Links struct {
+			Self struct {
+				Href string `json:"href"`
+			} `json:"self"`
+		} `json:"links"`
+		WebHostFqdn string `json:"webHostFqdn"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&account); err != nil {
+		return "", fmt.Errorf("failed to decode accounts response: %w", err)
+	}
+
+	if account.WebHostFqdn == "" {
+		// No custom domain configured — fall back to aud URL
+		return audUrl, nil
+	}
+
+	return "https://" + account.WebHostFqdn, nil
 }
