@@ -1,25 +1,23 @@
+<p id="main" align="center">
+  <img src="https://authress.io/static/images/linkedin-banner.png" alt="Authress media banner">
+</p>
+
 # Authress Terraform Provider
 
-Manage [Authress](https://authress.io) resources — roles, service clients, and access policies — directly from Terraform.
+Manage [Authress](https://authress.io) resources declaratively from Terraform or OpenTofu.
 
-[![GitHub Workflow][workflow]][workflow-link] [![Terraform][terraform-badge]][terraform-link]
+[![GitHub Workflow][workflow]][workflow-link] [![Forums][discuss-badge]][discuss] [![Terraform][terraform-badge]][terraform-link]
 
 [workflow]: https://github.com/authress/terraform-provider-authress/actions/workflows/build.yml/badge.svg
 [workflow-link]: https://github.com/Authress/terraform-provider-authress/actions
+[discuss-badge]: https://img.shields.io/badge/build-terraform--authress-623CE4.svg
+[discuss]: https://discuss.hashicorp.com/c/terraform-providers/31
 [terraform-badge]: https://img.shields.io/badge/install-terraform--authress-blue.svg
 [terraform-link]: https://registry.terraform.io/providers/authress/authress/latest/docs
 
-## Authentication
+## Installation
 
-The provider uses zero-config authentication via the `AUTHRESS_KEY` environment variable. Set it to an OIDC JWT issued for your Authress account:
-
-```sh
-export AUTHRESS_KEY="eyJhbGciOi..."
-```
-
-No provider-block configuration is required when the environment variable is set.
-
-## Provider Configuration
+Install the `Authress` terraform provider and review the full documentation at the [Terraform Registry](https://registry.terraform.io/providers/authress/authress/latest/docs).
 
 ```hcl
 terraform {
@@ -30,17 +28,16 @@ terraform {
   }
 }
 
-provider "authress" {
-  # Optional: override the environment variable
-  # access_key = "eyJhbGciOi..."
-}
+provider "authress" {}
 ```
+
+Authentication is configured automatically via your CI/CD pipeline's OIDC integration. See the [Authress CI/CD setup guide](https://authress.io/knowledge-base/docs/category/cicd) for GitHub Actions, GitLab CI, and other platforms.
 
 ## Resources
 
 ### `authress_role`
 
-Manages an Authress role with permission definitions.
+Manages a role containing a set of permissions.
 
 ```hcl
 resource "authress_role" "editor" {
@@ -53,7 +50,9 @@ resource "authress_role" "editor" {
       allow = true
     }
     "documents:write" = {
-      allow = true
+      allow    = true
+      grant    = true
+      delegate = false
     }
   }
 }
@@ -61,7 +60,7 @@ resource "authress_role" "editor" {
 
 ### `authress_service_client`
 
-Manages an Authress service client with access keys, tags, and options.
+Manages a service client (machine identity) with optional access keys.
 
 ```hcl
 resource "authress_service_client" "api_worker" {
@@ -75,7 +74,6 @@ resource "authress_service_client" "api_worker" {
 
   options {
     grant_user_permissions_access = true
-    grant_token_generation        = false
   }
 
   access_key {
@@ -84,23 +82,6 @@ resource "authress_service_client" "api_worker" {
 }
 ```
 
-## Go SDK
-
-This provider depends on [authress-sdk.go](https://github.com/Authress/authress-sdk.go) for API communication. The SDK is referenced via a `replace` directive in `go.mod` for local development.
-
-## Examples
-
-See [`development-examples/`](./development-examples/) for working configurations:
-
-- [`role/`](./development-examples/role/) — Role with permissions
-- [`service_client/`](./development-examples/service_client/) — Service client with keys and tags
-
 ## Development
 
 For developing this plugin see [Development Docs](./development-examples/README.md).
-
-### Generating Documentation
-
-```sh
-go run github.com/hashicorp/terraform-plugin-docs/cmd/tfplugindocs generate
-```
