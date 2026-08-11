@@ -2,6 +2,7 @@ package authress
 
 import (
 	"context"
+	"errors"
 	"regexp"
 	"strings"
 	"time"
@@ -16,7 +17,9 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	TerraformType "github.com/hashicorp/terraform-plugin-framework/types"
 
-	AuthressSdk "github.com/authress/terraform-provider-authress/src/sdk"
+	authress "github.com/authress/authress-sdk.go"
+	"github.com/authress/authress-sdk.go/apis"
+	"github.com/authress/authress-sdk.go/models"
 )
 
 // Ensure the implementation satisfies the expected interfaces.
@@ -33,7 +36,7 @@ func NewRoleResource() resource.Resource {
 
 // RoleInterfaceProvider is the resource implementation.
 type RoleInterfaceProvider struct {
-	client *AuthressSdk.Client
+	sdk *authress.AuthressClient
 }
 
 /*******************************************/
@@ -41,19 +44,20 @@ type RoleInterfaceProvider struct {
 /*******************************************/
 type AuthressRoleResource struct {
 	// Remove after https://developer.hashicorp.com/terraform/plugin/framework/acctests#implement-id-attribute https://github.com/hashicorp/terraform-plugin-sdk/issues/1072
-	LegacyID	TerraformType.String						`tfsdk:"id"`
-	RoleID		TerraformType.String						`tfsdk:"role_id"`
-	Name 		TerraformType.String						`tfsdk:"name"`
-	Description TerraformType.String						`tfsdk:"description"`
-	LastUpdated TerraformType.String  						`tfsdk:"last_updated"`
-	Permissions map[string]AuthressRolePermissionResource	`tfsdk:"permissions"`
+	LegacyID    TerraformType.String                     `tfsdk:"id"`
+	RoleID      TerraformType.String                     `tfsdk:"role_id"`
+	Name        TerraformType.String                     `tfsdk:"name"`
+	Description TerraformType.String                     `tfsdk:"description"`
+	LastUpdated TerraformType.String                     `tfsdk:"last_updated"`
+	Permissions map[string]AuthressRolePermissionResource `tfsdk:"permissions"`
 }
 
 type AuthressRolePermissionResource struct {
-	Allow 		TerraformType.Bool	`tfsdk:"allow"`
-	Grant		TerraformType.Bool	`tfsdk:"grant"`
-	Delegate	TerraformType.Bool	`tfsdk:"delegate"`
+	Allow    TerraformType.Bool `tfsdk:"allow"`
+	Grant    TerraformType.Bool `tfsdk:"grant"`
+	Delegate TerraformType.Bool `tfsdk:"delegate"`
 }
+
 /*******************************************/
 /*******************************************/
 
@@ -65,14 +69,13 @@ func (r *RoleInterfaceProvider) Metadata(_ context.Context, req resource.Metadat
 // Schema defines the schema for the data source.
 func (r *RoleInterfaceProvider) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		Description: "Manages an Authress `Role`. Roles are assigned to `Users` for specific `Resources` using an `Access Record`. `Roles` only contain a list of permissions and should be mapped to your existing User Personas. See Authress KB for more information.",
+		Description:         "Manages an Authress `Role`. Roles are assigned to `Users` for specific `Resources` using an `Access Record`. `Roles` only contain a list of permissions and should be mapped to your existing User Personas. See Authress KB for more information.",
 		MarkdownDescription: "Manages an Authress `Role`. Roles are assigned to `Users` for specific `Resources` using an `Access Record`. `Roles` only contain a list of permissions and should be mapped to your existing User Personas. See [Roles and Permissions](https://authress.io/knowledge-base/docs/authorization/permissions#roles) for more information.",
-		Attributes: map[string]schema.Attribute {
-			"role_id": schema.StringAttribute {
+		Attributes: map[string]schema.Attribute{
+			"role_id": schema.StringAttribute{
 				Description: "Unique identifier for the role, can be specified on creation, and used by records to map to permissions.",
 				Required:    true,
-				// https://developer.hashicorp.com/terraform/plugin/framework/resources/plan-modification#requiresreplace
-				PlanModifiers: []planmodifier.String{ stringplanmodifier.RequiresReplace() },
+				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
 				Validators: []validator.String{
 					stringvalidator.LengthBetween(1, 64),
 					stringvalidator.RegexMatches(
@@ -81,32 +84,32 @@ func (r *RoleInterfaceProvider) Schema(_ context.Context, _ resource.SchemaReque
 					),
 				},
 			},
-			"id": schema.StringAttribute {
-				Description:	"Legacy Terraform property that is not actually used",
-				Computed:   	true,
+			"id": schema.StringAttribute{
+				Description: "Legacy Terraform property that is not actually used",
+				Computed:    true,
 			},
-			"last_updated": schema.StringAttribute {
-				Description:	"Timestamp of the last Terraform update of the role.",
-				Computed:   	true,
+			"last_updated": schema.StringAttribute{
+				Description: "Timestamp of the last Terraform update of the role.",
+				Computed:    true,
 			},
-			"name": schema.StringAttribute {
-				Description:	"A helpful name for this role. The name displays in the Authress Management Portal",
-				Required:   	true,
-				Validators:		[]validator.String{
+			"name": schema.StringAttribute{
+				Description: "A helpful name for this role. The name displays in the Authress Management Portal",
+				Required:    true,
+				Validators: []validator.String{
 					stringvalidator.LengthBetween(1, 128),
 				},
 			},
-			"description": schema.StringAttribute {
-				Description:	"An extended description field that can be used to store additional information about the usage of the role.",
-				Optional:	    true,
-				Computed:		true,
-				Validators: 	[]validator.String{
+			"description": schema.StringAttribute{
+				Description: "An extended description field that can be used to store additional information about the usage of the role.",
+				Optional:    true,
+				Computed:    true,
+				Validators: []validator.String{
 					stringvalidator.LengthBetween(0, 1024),
 				},
 			},
-			"permissions": schema.MapNestedAttribute {
+			"permissions": schema.MapNestedAttribute{
 				Description: "A map of the permissions. The key of the map is the action the permission grants, can be scoped using `:` and parent actions imply sub-resource permissions, `action:*` or `action` implies `action:sub-action`. This property is case-insensitive, it will always be cast to lowercase before comparing actions to user permissions.",
-				Required:	true,
+				Required:    true,
 				Validators: []validator.Map{
 					mapvalidator.KeysAre(
 						stringvalidator.LengthBetween(1, 64),
@@ -117,24 +120,24 @@ func (r *RoleInterfaceProvider) Schema(_ context.Context, _ resource.SchemaReque
 					),
 				},
 				NestedObject: schema.NestedAttributeObject{
-					Attributes: map[string]schema.Attribute {
-						"allow": schema.BoolAttribute {
-							Description:	"Does this permission grant the user the ability to execute the action?",
-							Optional: 		true,
-							Computed:		true,
-							PlanModifiers: []planmodifier.Bool{ boolDefault(false) },
+					Attributes: map[string]schema.Attribute{
+						"allow": schema.BoolAttribute{
+							Description:   "Does this permission grant the user the ability to execute the action?",
+							Optional:      true,
+							Computed:      true,
+							PlanModifiers: []planmodifier.Bool{boolDefault(false)},
 						},
-						"grant": schema.BoolAttribute {
-							Description:	"Allows the user to give the permission to others without being able to execute the action.",
-							Optional:   	true,
-							Computed:		true,
-							PlanModifiers: []planmodifier.Bool{ boolDefault(false) },
+						"grant": schema.BoolAttribute{
+							Description:   "Allows the user to give the permission to others without being able to execute the action.",
+							Optional:      true,
+							Computed:      true,
+							PlanModifiers: []planmodifier.Bool{boolDefault(false)},
 						},
-						"delegate": schema.BoolAttribute {
-							Description: 	"Allows delegating or granting the permission to others without being able to execute the action.",
-							Optional:    	true,
-							Computed:		true,
-							PlanModifiers: []planmodifier.Bool{ boolDefault(false) },
+						"delegate": schema.BoolAttribute{
+							Description:   "Allows delegating or granting the permission to others without being able to execute the action.",
+							Optional:      true,
+							Computed:      true,
+							PlanModifiers: []planmodifier.Bool{boolDefault(false)},
 						},
 					},
 				},
@@ -149,12 +152,11 @@ func (r *RoleInterfaceProvider) Configure(_ context.Context, req resource.Config
 		return
 	}
 
-	r.client = req.ProviderData.(*AuthressSdk.Client)
+	r.sdk = req.ProviderData.(*authress.AuthressClient)
 }
 
 // Create creates the resource and sets the initial Terraform state.
 func (r *RoleInterfaceProvider) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
-	// Retrieve values from plan
 	var plannedAuthressRoleResource AuthressRoleResource
 	diags := req.Plan.Get(ctx, &plannedAuthressRoleResource)
 	resp.Diagnostics.Append(diags...)
@@ -162,32 +164,25 @@ func (r *RoleInterfaceProvider) Create(ctx context.Context, req resource.CreateR
 		return
 	}
 
-	// Create new role
-	authressSdkRole := MapTerraformRoleToSdk(&plannedAuthressRoleResource)
-	returnedRole, err := r.client.CreateRole(authressSdkRole)
+	sdkRole := MapTerraformRoleToSdk(&plannedAuthressRoleResource)
+	returnedRole, _, err := r.sdk.Roles.CreateRole(ctx, sdkRole)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Authress API Response: Attempted to create role:",
-			GetErrorWrapper("Could not create role, unexpected error: " + err.Error()),
+			GetErrorWrapper("Could not create role, unexpected error: "+err.Error()),
 		)
 		return
 	}
 
-	// Map response body to schema and populate Computed attribute values
 	plannedAuthressRoleResource = MapSdkRoleToTerraform(returnedRole)
 	plannedAuthressRoleResource.LastUpdated = TerraformType.StringValue(time.Now().Format(time.RFC850))
 
-	// Set state to fully populated data
 	diags = resp.State.Set(ctx, plannedAuthressRoleResource)
 	resp.Diagnostics.Append(diags...)
-	if resp.Diagnostics.HasError() {
-		return
-	}
 }
 
 // Read refreshes the Terraform state with the latest data.
 func (r *RoleInterfaceProvider) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
-	// Get current state
 	var currentAuthressRoleResource AuthressRoleResource
 	diags := req.State.Get(ctx, &currentAuthressRoleResource)
 	resp.Diagnostics.Append(diags...)
@@ -195,36 +190,28 @@ func (r *RoleInterfaceProvider) Read(ctx context.Context, req resource.ReadReque
 		return
 	}
 
-	// Get refreshed role value from Authress
-	authressSdkRole, err := r.client.GetRole(currentAuthressRoleResource.RoleID.ValueString())
+	roleId := currentAuthressRoleResource.RoleID.ValueString()
+	returnedRole, _, err := r.sdk.Roles.GetRole(ctx, roleId)
 	if err != nil {
+		var clientErr *apis.ClientHttpError
+		if errors.As(err, &clientErr) && clientErr.StatusCode() == 404 {
+			resp.State.RemoveResource(ctx)
+			return
+		}
 		resp.Diagnostics.AddError(
 			"Authress API Response: Attempted to get role:",
-			GetErrorWrapper("Could not read Authress role ID " + currentAuthressRoleResource.RoleID.ValueString() + ": " + err.Error()),
+			GetErrorWrapper("Could not read Authress role ID "+roleId+": "+err.Error()),
 		)
 		return
 	}
 
-	if authressSdkRole == nil {
-		resp.Diagnostics.AddError(
-			"Authress Role exists in the Terraform plan but does not exist in Authress:",
-			GetErrorWrapper("Either recreate the role in the Authress Management Portal or remove it from your state file. Role ID:" + currentAuthressRoleResource.RoleID.ValueString()),
-		)
-		return
-	}
-
-	// Set refreshed currentAuthressRoleResource
-	currentAuthressRoleResource = MapSdkRoleToTerraform(authressSdkRole)
+	currentAuthressRoleResource = MapSdkRoleToTerraform(returnedRole)
 	diags = resp.State.Set(ctx, &currentAuthressRoleResource)
 	resp.Diagnostics.Append(diags...)
-	if resp.Diagnostics.HasError() {
-		return
-	}
 }
 
 // Update updates the resource and sets the updated Terraform state on success.
 func (r *RoleInterfaceProvider) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	// Retrieve values from plan
 	var plannedAuthressRoleResource AuthressRoleResource
 	diags := req.Plan.Get(ctx, &plannedAuthressRoleResource)
 	resp.Diagnostics.Append(diags...)
@@ -232,15 +219,13 @@ func (r *RoleInterfaceProvider) Update(ctx context.Context, req resource.UpdateR
 		return
 	}
 
-	// Generate API request body from plannedAuthressRoleResource
-	authressSdkRole := MapTerraformRoleToSdk(&plannedAuthressRoleResource)
-
-	// Update existing role
-	returnedRole, err := r.client.UpdateRole(plannedAuthressRoleResource.RoleID.ValueString(), authressSdkRole)
+	roleId := plannedAuthressRoleResource.RoleID.ValueString()
+	sdkRole := MapTerraformRoleToSdk(&plannedAuthressRoleResource)
+	returnedRole, _, err := r.sdk.Roles.UpdateRole(ctx, roleId, sdkRole)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Authress API Response: Attempted to update role:",
-			GetErrorWrapper("Could not update role, unexpected error: " + err.Error()),
+			GetErrorWrapper("Could not update role, unexpected error: "+err.Error()),
 		)
 		return
 	}
@@ -250,14 +235,10 @@ func (r *RoleInterfaceProvider) Update(ctx context.Context, req resource.UpdateR
 
 	diags = resp.State.Set(ctx, plannedAuthressRoleResource)
 	resp.Diagnostics.Append(diags...)
-	if resp.Diagnostics.HasError() {
-		return
-	}
 }
 
 // Delete deletes the resource and removes the Terraform state on success.
 func (r *RoleInterfaceProvider) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
-	// Retrieve values from state
 	var currentAuthressRoleResource AuthressRoleResource
 	diags := req.State.Get(ctx, &currentAuthressRoleResource)
 	resp.Diagnostics.Append(diags...)
@@ -265,67 +246,75 @@ func (r *RoleInterfaceProvider) Delete(ctx context.Context, req resource.DeleteR
 		return
 	}
 
-	// Delete existing role
-	err := r.client.DeleteRole(currentAuthressRoleResource.RoleID.ValueString())
+	roleId := currentAuthressRoleResource.RoleID.ValueString()
+	_, err := r.sdk.Roles.DeleteRole(ctx, roleId)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Authress API Response: Attempted to delete role:",
-			GetErrorWrapper("Could not delete role, unexpected error: " + err.Error()),
+			GetErrorWrapper("Could not delete role, unexpected error: "+err.Error()),
 		)
 		return
 	}
 }
 
 func (r *RoleInterfaceProvider) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	// Retrieve import ID and save to id attribute
 	resource.ImportStatePassthroughID(ctx, path.Root("role_id"), req, resp)
 }
 
-func MapSdkRoleToTerraform(authressSdkRole *AuthressSdk.Role) (AuthressRoleResource) {
-	terraformRole := AuthressRoleResource {
-		RoleID: TerraformType.StringValue(authressSdkRole.RoleID),
-		LegacyID: TerraformType.StringValue(authressSdkRole.RoleID),
-		Name: TerraformType.StringValue(authressSdkRole.Name),
-		Description: TerraformType.StringValue(authressSdkRole.Description),
+func MapSdkRoleToTerraform(sdkRole *models.Role) AuthressRoleResource {
+	roleId := sdkRole.GetRoleId()
+	description := sdkRole.GetDescription()
+
+	terraformRole := AuthressRoleResource{
+		RoleID:      TerraformType.StringValue(roleId),
+		LegacyID:    TerraformType.StringValue(roleId),
+		Name:        TerraformType.StringValue(sdkRole.Name),
+		Description: TerraformType.StringValue(description),
 		Permissions: make(map[string]AuthressRolePermissionResource),
 	}
 
-	for _, authressRolePermission := range authressSdkRole.Permissions {
-		terraformRole.Permissions[authressRolePermission.Action] = AuthressRolePermissionResource {
-			Allow: TerraformType.BoolValue(authressRolePermission.Allow),
-			Grant: TerraformType.BoolValue(authressRolePermission.Grant),
-			Delegate: TerraformType.BoolValue(authressRolePermission.Delegate),
+	for _, perm := range sdkRole.Permissions {
+		terraformRole.Permissions[perm.Action] = AuthressRolePermissionResource{
+			Allow:    TerraformType.BoolValue(perm.Allow),
+			Grant:    TerraformType.BoolValue(perm.Grant),
+			Delegate: TerraformType.BoolValue(perm.Delegate),
 		}
-   }
+	}
 
-   return terraformRole
+	return terraformRole
 }
 
-func MapTerraformRoleToSdk(terraformRole *AuthressRoleResource) (AuthressSdk.Role) {
-	authressSdkRole := AuthressSdk.Role {
-		RoleID: terraformRole.RoleID.ValueString(),
-		Name: terraformRole.Name.ValueString(),
-		Description: terraformRole.Description.ValueString(),
-		Permissions: make([]AuthressSdk.Permission, 0, len(terraformRole.Permissions)),
-	}
+func MapTerraformRoleToSdk(terraformRole *AuthressRoleResource) *models.Role {
+	roleId := terraformRole.RoleID.ValueString()
+	permissions := make([]models.PermissionObject, 0, len(terraformRole.Permissions))
 	for key, value := range terraformRole.Permissions {
-		authressSdkRolePermissions := AuthressSdk.Permission {
-			Action: key,
-			Allow: value.Allow.ValueBool(),
-			Grant: value.Grant.ValueBool(),
+		permissions = append(permissions, models.PermissionObject{
+			Action:   key,
+			Allow:    value.Allow.ValueBool(),
+			Grant:    value.Grant.ValueBool(),
 			Delegate: value.Delegate.ValueBool(),
-		}
-		authressSdkRole.Permissions = append(authressSdkRole.Permissions, authressSdkRolePermissions)
+		})
 	}
 
-   return authressSdkRole
+	sdkRole := &models.Role{
+		RoleId:      &roleId,
+		Name:        terraformRole.Name.ValueString(),
+		Permissions: permissions,
+	}
+
+	if !terraformRole.Description.IsNull() && !terraformRole.Description.IsUnknown() {
+		sdkRole.SetDescription(terraformRole.Description.ValueString())
+	}
+
+	return sdkRole
 }
-func GetErrorWrapper(errorString string) (string) {
+
+func GetErrorWrapper(errorString string) string {
 	responseString := errorString
-	if (strings.Contains(errorString, "invalid character '<' looking for")) {
+	if strings.Contains(errorString, "invalid character '<' looking for") {
 		responseString = "The custom_domain configured is not valid, please review the Authress provider configuration."
 	}
 	return "\n************************************************************\nError Details:\n\n" +
-	responseString +
-	"\n************************************************************\n\n"
+		responseString +
+		"\n************************************************************\n\n"
 }
