@@ -3,7 +3,7 @@ module github.com/authress/terraform-provider-authress
 go 1.25.8
 
 require (
-	github.com/authress/authress-sdk.go v0.10.0
+	github.com/authress/authress-sdk.go v0.10.26
 	github.com/hashicorp/terraform-plugin-docs v0.25.0
 	github.com/hashicorp/terraform-plugin-framework v1.19.0
 	github.com/hashicorp/terraform-plugin-framework-validators v0.19.0
@@ -75,5 +75,3 @@ require (
 	gopkg.in/yaml.v2 v2.3.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
-
-replace github.com/authress/authress-sdk.go => ../go-sdk
