@@ -3,6 +3,7 @@ package authress
 import (
 	"context"
 	"errors"
+	"fmt"
 	"regexp"
 	"strings"
 	"time"
@@ -167,6 +168,34 @@ func (r *RoleInterfaceProvider) Create(ctx context.Context, req resource.CreateR
 	sdkRole := MapTerraformRoleToSdk(&plannedAuthressRoleResource)
 	returnedRole, _, err := r.sdk.Roles.CreateRole(ctx, sdkRole)
 	if err != nil {
+		var clientErr *apis.ClientHttpError
+		if errors.As(err, &clientErr) && clientErr.StatusCode() == 409 {
+			// Resource already exists — attempt to adopt
+			roleId := plannedAuthressRoleResource.RoleID.ValueString()
+			existingRole, _, getErr := r.sdk.Roles.GetRole(ctx, roleId)
+			if getErr != nil {
+				resp.Diagnostics.AddError("Failed to read existing role for adoption", getErr.Error())
+				return
+			}
+
+			// Compare configurable fields
+			mismatches := collectRoleMismatches(&plannedAuthressRoleResource, existingRole)
+			if mismatches != nil {
+				resp.Diagnostics.AddError(
+					"Cannot adopt existing role",
+					formatMismatches("authress_role", roleId, mismatches),
+				)
+				return
+			}
+
+			// Adopt: populate state from existing resource
+			plannedAuthressRoleResource = MapSdkRoleToTerraform(existingRole)
+			plannedAuthressRoleResource.LastUpdated = TerraformType.StringValue(time.Now().Format(time.RFC850))
+			diags = resp.State.Set(ctx, plannedAuthressRoleResource)
+			resp.Diagnostics.Append(diags...)
+			return
+		}
+
 		resp.Diagnostics.AddError(
 			"Authress API Response: Attempted to create role:",
 			GetErrorWrapper("Could not create role, unexpected error: "+err.Error()),
@@ -307,6 +336,65 @@ func MapTerraformRoleToSdk(terraformRole *AuthressRoleResource) *models.Role {
 	}
 
 	return sdkRole
+}
+
+func collectRoleMismatches(planned *AuthressRoleResource, existing *models.Role) []FieldMismatch {
+	checks := []*FieldMismatch{
+		compareField("name", planned.Name.ValueString(), existing.Name),
+	}
+
+	// Compare permissions: build a map from existing role
+	existingPerms := make(map[string]models.PermissionObject, len(existing.Permissions))
+	for _, p := range existing.Permissions {
+		existingPerms[p.Action] = p
+	}
+
+	// Check each planned permission exists with matching values
+	for action, plannedPerm := range planned.Permissions {
+		existingPerm, exists := existingPerms[action]
+		if !exists {
+			checks = append(checks, &FieldMismatch{
+				Field:    "permissions[" + action + "]",
+				Expected: "present",
+				Actual:   "missing",
+			})
+			continue
+		}
+		if plannedPerm.Allow.ValueBool() != existingPerm.Allow {
+			checks = append(checks, &FieldMismatch{
+				Field:    "permissions[" + action + "].allow",
+				Expected: fmt.Sprintf("%t", plannedPerm.Allow.ValueBool()),
+				Actual:   fmt.Sprintf("%t", existingPerm.Allow),
+			})
+		}
+		if plannedPerm.Grant.ValueBool() != existingPerm.Grant {
+			checks = append(checks, &FieldMismatch{
+				Field:    "permissions[" + action + "].grant",
+				Expected: fmt.Sprintf("%t", plannedPerm.Grant.ValueBool()),
+				Actual:   fmt.Sprintf("%t", existingPerm.Grant),
+			})
+		}
+		if plannedPerm.Delegate.ValueBool() != existingPerm.Delegate {
+			checks = append(checks, &FieldMismatch{
+				Field:    "permissions[" + action + "].delegate",
+				Expected: fmt.Sprintf("%t", plannedPerm.Delegate.ValueBool()),
+				Actual:   fmt.Sprintf("%t", existingPerm.Delegate),
+			})
+		}
+	}
+
+	// Check for extra permissions in existing that aren't in planned
+	for action := range existingPerms {
+		if _, exists := planned.Permissions[action]; !exists {
+			checks = append(checks, &FieldMismatch{
+				Field:    "permissions[" + action + "]",
+				Expected: "missing",
+				Actual:   "present",
+			})
+		}
+	}
+
+	return collectMismatches(checks...)
 }
 
 func GetErrorWrapper(errorString string) string {
