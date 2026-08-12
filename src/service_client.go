@@ -10,7 +10,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	TerraformType "github.com/hashicorp/terraform-plugin-framework/types"
 
 	authress "github.com/authress/authress-sdk.go"
@@ -72,9 +71,8 @@ func (r *ServiceClientInterfaceProvider) Schema(_ context.Context, _ resource.Sc
 		MarkdownDescription: "Manages an Authress [Service Client](https://authress.io/knowledge-base/docs/category/service-clients). Service Clients are machine identities used for service-to-service authorization.",
 		Attributes: map[string]schema.Attribute{
 			"client_id": schema.StringAttribute{
-				Description: "The unique identifier for the service client.",
-				Required:    true,
-				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
+				Description: "The unique identifier for the service client. Assigned by Authress on creation.",
+				Computed:    true,
 			},
 			"name": schema.StringAttribute{
 				Description: "The display name for the service client.",
@@ -148,32 +146,6 @@ func (r *ServiceClientInterfaceProvider) Create(ctx context.Context, req resourc
 	sdkClient := mapTerraformServiceClientToSdk(&planned)
 	returnedClient, _, err := r.sdk.ServiceClients.CreateClient(ctx, sdkClient)
 	if err != nil {
-		var clientErr *apis.ClientHttpError
-		if errors.As(err, &clientErr) && clientErr.StatusCode() == 409 {
-			// Resource already exists — attempt to adopt
-			clientId := planned.ClientId.ValueString()
-			existingClient, _, getErr := r.sdk.ServiceClients.GetClient(ctx, clientId)
-			if getErr != nil {
-				resp.Diagnostics.AddError("Failed to read existing service client for adoption", getErr.Error())
-				return
-			}
-
-			mismatches := collectServiceClientMismatches(&planned, existingClient)
-			if mismatches != nil {
-				resp.Diagnostics.AddError(
-					"Cannot adopt existing service client",
-					formatMismatches("authress_service_client", clientId, mismatches),
-				)
-				return
-			}
-
-			// Adopt: populate state from existing resource
-			planned = mapSdkServiceClientToTerraform(existingClient)
-			diags = resp.State.Set(ctx, planned)
-			resp.Diagnostics.Append(diags...)
-			return
-		}
-
 		resp.Diagnostics.AddError(
 			"Authress API Response: Attempted to create service client:",
 			GetErrorWrapper("Could not create service client, unexpected error: "+err.Error()),
@@ -390,9 +362,7 @@ func mapSdkServiceClientToTerraform(sdkClient *models.Client) AuthressServiceCli
 }
 
 func mapTerraformServiceClientToSdk(tf *AuthressServiceClientResource) *models.Client {
-	sdkClient := &models.Client{
-		ClientId: tf.ClientId.ValueString(),
-	}
+	sdkClient := &models.Client{}
 
 	sdkClient.SetName(tf.Name.ValueString())
 
