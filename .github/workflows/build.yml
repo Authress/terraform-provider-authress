@@ -8,45 +8,45 @@ on:
     branches:
     - main
     - 'release/**'
+  workflow_dispatch:
 
 jobs:
   build:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v7
     - name: Set up Go
-      uses: actions/setup-go@v3
+      uses: actions/setup-go@v6
       with:
-        go-version: 1.18
+        go-version-file: go.mod
 
     - name: Build
       run: |
-        export VERSION=`echo $GITHUB_REF | sed -e "s/refs\/heads\///g" -e "s/release\///g"`
-        # This should actually be set using: https://www.digitalocean.com/community/tutorials/using-ldflags-to-set-version-information-for-go-applications
+        export VERSION=$(echo $GITHUB_REF | sed -e "s/refs\/heads\///g" -e "s/release\///g")
         sed -i "s/0.0.0/${VERSION}/g" src/version.go
         make install
         make test
 
     - name: Create Github Release and Tag
-      if: github.repository_owner == 'Authress' && github.ref != 'refs/heads/main' && github.event_name == 'push'
+      if: github.repository_owner == 'Authress' && github.ref != 'refs/heads/main' && github.event_name != 'pull_request'
       run: |
         git tag v${GITHUB_REF/refs\/heads\/release\//}.$GITHUB_RUN_NUMBER -f
         git push origin v${GITHUB_REF/refs\/heads\/release\//}.$GITHUB_RUN_NUMBER
 
   goreleaser:
-    if: github.repository_owner == 'Authress' && github.ref != 'refs/heads/main' && github.event_name == 'push'
+    if: github.repository_owner == 'Authress' && github.ref != 'refs/heads/main' && github.event_name != 'pull_request'
     needs: build
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
-      - name: Unshallow
-        run: git fetch --prune --unshallow
-      - name: Set up Go
-        uses: actions/setup-go@v3
+        uses: actions/checkout@v7
         with:
-          go-version: 1.18
+          fetch-depth: 0
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
       - name: Import GPG key
         id: import_gpg
         uses: crazy-max/ghaction-import-gpg@e37acbdf6e46d8be3f11008297e2964d5f68adef
@@ -57,7 +57,7 @@ jobs:
         run: gpg -K
 
       - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@v2
+        uses: goreleaser/goreleaser-action@v6
         with:
           version: latest
           args: release --clean
