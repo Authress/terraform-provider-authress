@@ -11,7 +11,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	TerraformType "github.com/hashicorp/terraform-plugin-framework/types"
-	"github.com/hashicorp/terraform-plugin-log/tflog"
 
 	authress "github.com/authress/authress-sdk.go"
 	"github.com/authress/authress-sdk.go/apis"
@@ -137,12 +136,14 @@ func (r *ServiceClientInterfaceProvider) Configure(_ context.Context, req resour
 
 // Create creates the resource and sets the initial Terraform state.
 func (r *ServiceClientInterfaceProvider) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
+
 	var planned AuthressServiceClientResource
 	diags := req.Plan.Get(ctx, &planned)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 
 	sdkClient := mapTerraformServiceClientToSdk(&planned)
 	returnedClient, _, err := r.sdk.ServiceClients.CreateClient(ctx, sdkClient)
@@ -158,6 +159,7 @@ func (r *ServiceClientInterfaceProvider) Create(ctx context.Context, req resourc
 		)
 		return
 	}
+
 
 	// Save state immediately after client creation — before key registration.
 	// If key creation fails, the next apply will run Update (not Create) and
@@ -187,7 +189,7 @@ func (r *ServiceClientInterfaceProvider) Create(ctx context.Context, req resourc
 			if errors.As(keyErr, &clientErr) && len(clientErr.Body()) > 0 {
 				detail += "\nResponse body: " + string(clientErr.Body())
 			}
-			resp.Diagnostics.AddError("Failed to create access key", detail)
+			resp.Diagnostics.AddError("Failed to create access key", GetErrorWrapper(detail))
 			return
 		}
 		planned.AccessKeys[i].KeyId = TerraformType.StringValue(returnedKey.GetKeyId())
@@ -213,6 +215,7 @@ func (r *ServiceClientInterfaceProvider) Read(ctx context.Context, req resource.
 	}
 
 	clientId := current.ClientId.ValueString()
+
 	returnedClient, _, err := r.sdk.ServiceClients.GetClient(ctx, clientId)
 	if err != nil {
 		var clientErr *apis.ClientHttpError
@@ -220,9 +223,13 @@ func (r *ServiceClientInterfaceProvider) Read(ctx context.Context, req resource.
 			resp.State.RemoveResource(ctx)
 			return
 		}
+		detail := "Could not read Authress service client ID " + clientId + ": " + err.Error()
+		if errors.As(err, &clientErr) {
+			detail += fmt.Sprintf("\nHTTP %d | body: %s", clientErr.StatusCode(), string(clientErr.Body()))
+		}
 		resp.Diagnostics.AddError(
 			"Authress API Response: Attempted to get service client:",
-			GetErrorWrapper("Could not read Authress service client ID "+clientId+": "+err.Error()),
+			GetErrorWrapper(detail),
 		)
 		return
 	}
@@ -249,10 +256,16 @@ func (r *ServiceClientInterfaceProvider) Update(ctx context.Context, req resourc
 	}
 
 	clientId := planned.ClientId.ValueString()
-	tflog.Info(ctx, "Updating service client", map[string]any{
-		"clientId": clientId,
-		"name":     planned.Name.ValueString(),
-	})
+	if clientId == "" {
+		// State is corrupted from a partial Create (clientId was never populated).
+		// Remove from state — the next apply will see the resource as new and run Create.
+		resp.State.RemoveResource(ctx)
+		resp.Diagnostics.AddWarning(
+			"Service client state was corrupted (empty clientId)",
+			"The resource has been removed from state. Re-run `tofu apply` to create it.",
+		)
+		return
+	}
 
 	sdkClient := mapTerraformServiceClientToSdk(&planned)
 	_, _, err := r.sdk.ServiceClients.UpdateClient(ctx, clientId, sdkClient)
