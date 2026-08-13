@@ -11,6 +11,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	TerraformType "github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-log/tflog"
 
 	authress "github.com/authress/authress-sdk.go"
 	"github.com/authress/authress-sdk.go/apis"
@@ -146,9 +147,14 @@ func (r *ServiceClientInterfaceProvider) Create(ctx context.Context, req resourc
 	sdkClient := mapTerraformServiceClientToSdk(&planned)
 	returnedClient, _, err := r.sdk.ServiceClients.CreateClient(ctx, sdkClient)
 	if err != nil {
+		detail := "Could not create service client, unexpected error: " + err.Error()
+		var clientErr *apis.ClientHttpError
+		if errors.As(err, &clientErr) {
+			detail += fmt.Sprintf("\nHTTP %d | body: %s", clientErr.StatusCode(), string(clientErr.Body()))
+		}
 		resp.Diagnostics.AddError(
 			"Authress API Response: Attempted to create service client:",
-			GetErrorWrapper("Could not create service client, unexpected error: "+err.Error()),
+			GetErrorWrapper(detail),
 		)
 		return
 	}
@@ -243,12 +249,22 @@ func (r *ServiceClientInterfaceProvider) Update(ctx context.Context, req resourc
 	}
 
 	clientId := planned.ClientId.ValueString()
+	tflog.Info(ctx, "Updating service client", map[string]any{
+		"clientId": clientId,
+		"name":     planned.Name.ValueString(),
+	})
+
 	sdkClient := mapTerraformServiceClientToSdk(&planned)
 	_, _, err := r.sdk.ServiceClients.UpdateClient(ctx, clientId, sdkClient)
 	if err != nil {
+		detail := "Could not update service client, unexpected error: " + err.Error()
+		var clientErr *apis.ClientHttpError
+		if errors.As(err, &clientErr) {
+			detail += fmt.Sprintf("\nHTTP %d | clientId=%q | body: %s", clientErr.StatusCode(), clientId, string(clientErr.Body()))
+		}
 		resp.Diagnostics.AddError(
 			"Authress API Response: Attempted to update service client:",
-			GetErrorWrapper("Could not update service client, unexpected error: "+err.Error()),
+			GetErrorWrapper(detail),
 		)
 		return
 	}
