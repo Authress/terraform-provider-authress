@@ -162,10 +162,12 @@ func (r *ServiceClientInterfaceProvider) Create(ctx context.Context, req resourc
 
 		returnedKey, _, keyErr := r.sdk.ServiceClients.RequestAccessKey(ctx, clientId, accessKeyBody)
 		if keyErr != nil {
-			resp.Diagnostics.AddError(
-				"Failed to create access key",
-				fmt.Sprintf("Could not create access key with public_key %q: %s", publicKey, keyErr.Error()),
-			)
+			detail := fmt.Sprintf("Could not create access key with public_key %q: %s", publicKey, keyErr.Error())
+			var clientErr *apis.ClientHttpError
+			if errors.As(keyErr, &clientErr) && len(clientErr.Body()) > 0 {
+				detail += "\nResponse body: " + string(clientErr.Body())
+			}
+			resp.Diagnostics.AddError("Failed to create access key", detail)
 			return
 		}
 		planned.AccessKeys[i].KeyId = TerraformType.StringValue(returnedKey.GetKeyId())
@@ -256,10 +258,12 @@ func (r *ServiceClientInterfaceProvider) Update(ctx context.Context, req resourc
 
 			_, _, keyErr := r.sdk.ServiceClients.RequestAccessKey(ctx, clientId, accessKeyBody)
 			if keyErr != nil {
-				resp.Diagnostics.AddError(
-					"Failed to create access key",
-					fmt.Sprintf("Could not create access key with public_key %q: %s", publicKey, keyErr.Error()),
-				)
+				detail := fmt.Sprintf("Could not create access key with public_key %q: %s", publicKey, keyErr.Error())
+				var clientErr *apis.ClientHttpError
+				if errors.As(keyErr, &clientErr) && len(clientErr.Body()) > 0 {
+					detail += "\nResponse body: " + string(clientErr.Body())
+				}
+				resp.Diagnostics.AddError("Failed to create access key", detail)
 				return
 			}
 		}
