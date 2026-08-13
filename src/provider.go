@@ -239,5 +239,8 @@ func resolveCustomDomain(audUrl, accountId, jwtToken string) (string, error) {
 		return audUrl, nil
 	}
 
+	if strings.HasPrefix(account.WebHostFqdn, "https://") {
+		return account.WebHostFqdn, nil
+	}
 	return "https://" + account.WebHostFqdn, nil
 }
