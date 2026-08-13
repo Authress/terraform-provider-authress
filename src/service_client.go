@@ -153,6 +153,20 @@ func (r *ServiceClientInterfaceProvider) Create(ctx context.Context, req resourc
 		return
 	}
 
+	// Save state immediately after client creation — before key registration.
+	// If key creation fails, the next apply will run Update (not Create) and
+	// handle key diffing correctly without creating duplicate clients.
+	planned.ClientId = TerraformType.StringValue(returnedClient.ClientId)
+	planned.CreatedTime = TerraformType.StringValue(returnedClient.CreatedTime.Format(time.RFC3339))
+	if returnedClient.HasName() {
+		planned.Name = TerraformType.StringValue(returnedClient.GetName())
+	}
+	diags = resp.State.Set(ctx, planned)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
 	// After creation, register each access key
 	clientId := returnedClient.ClientId
 	for i, key := range planned.AccessKeys {
