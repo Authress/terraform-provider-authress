@@ -293,7 +293,7 @@ func (r *ServiceClientInterfaceProvider) Update(ctx context.Context, req resourc
 		return
 	}
 
-	clientId := planned.ClientId.ValueString()
+	clientId := current.ClientId.ValueString()
 	if clientId == "" {
 		// State is corrupted from a partial Create (clientId was never populated).
 		// Remove from state — the next apply will see the resource as new and run Create.
