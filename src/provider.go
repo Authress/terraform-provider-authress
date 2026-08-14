@@ -135,6 +135,8 @@ func (p *authressProvider) DataSources(_ context.Context) []func() datasource.Da
 
 func (p *authressProvider) Resources(_ context.Context) []func() resource.Resource {
 	return []func() resource.Resource{
+		NewAccessRecordResource,
+		NewAccessRecordGranularResource,
 		NewRoleResource,
 		NewServiceClientResource,
 	}

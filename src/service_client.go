@@ -11,6 +11,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	TerraformType "github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-log/tflog"
 
 	authress "github.com/authress/authress-sdk.go"
 	"github.com/authress/authress-sdk.go/apis"
@@ -44,6 +45,7 @@ type AuthressServiceClientResource struct {
 	CreatedTime TerraformType.String              `tfsdk:"created_time"`
 	Options     *ServiceClientOptionsResource     `tfsdk:"options"`
 	AccessKeys  []ServiceClientAccessKeyResource  `tfsdk:"access_key"`
+	Statements  []AccessRecordStatementResource   `tfsdk:"statement"`
 }
 
 type ServiceClientOptionsResource struct {
@@ -117,6 +119,31 @@ func (r *ServiceClientInterfaceProvider) Schema(_ context.Context, _ resource.Sc
 						"key_id": schema.StringAttribute{
 							Description: "The key ID assigned by Authress.",
 							Computed:    true,
+						},
+					},
+				},
+			},
+			"statement": schema.ListNestedBlock{
+				Description: "Inline access statements. Upserts an access record with the same ID as the service client, granting it the specified roles on the specified resources.",
+				NestedObject: schema.NestedBlockObject{
+					Attributes: map[string]schema.Attribute{
+						"roles": schema.ListAttribute{
+							Description: "The roles to grant (e.g. Authress:Owner).",
+							Required:    true,
+							ElementType: TerraformType.StringType,
+						},
+					},
+					Blocks: map[string]schema.Block{
+						"resource": schema.ListNestedBlock{
+							Description: "Resources the roles apply to.",
+							NestedObject: schema.NestedBlockObject{
+								Attributes: map[string]schema.Attribute{
+									"resource_uri": schema.StringAttribute{
+										Description: "The resource URI pattern (e.g. * for all resources).",
+										Required:    true,
+									},
+								},
+							},
 						},
 					},
 				},
@@ -201,6 +228,14 @@ func (r *ServiceClientInterfaceProvider) Create(ctx context.Context, req resourc
 		planned.Name = TerraformType.StringValue(returnedClient.GetName())
 	}
 
+	// Upsert access record if inline statements are configured
+	if len(planned.Statements) > 0 {
+		if err := upsertServiceClientAccessRecord(ctx, r.sdk, clientId, planned.Name.ValueString(), planned.Statements); err != nil {
+			resp.Diagnostics.AddError("Failed to upsert access record for service client", err.Error())
+			return
+		}
+	}
+
 	diags = resp.State.Set(ctx, planned)
 	resp.Diagnostics.Append(diags...)
 }
@@ -234,7 +269,10 @@ func (r *ServiceClientInterfaceProvider) Read(ctx context.Context, req resource.
 		return
 	}
 
+	// Preserve inline statements from prior state — the service client API doesn't return them
+	previousStatements := current.Statements
 	current = mapSdkServiceClientToTerraform(returnedClient)
+	current.Statements = previousStatements
 	diags = resp.State.Set(ctx, &current)
 	resp.Diagnostics.Append(diags...)
 }
@@ -341,6 +379,24 @@ func (r *ServiceClientInterfaceProvider) Update(ctx context.Context, req resourc
 	}
 
 	planned = mapSdkServiceClientToTerraform(refreshedClient)
+
+	// Preserve inline statements from plan (not stored on service client API)
+	var plannedFromPlan AuthressServiceClientResource
+	diags = req.Plan.Get(ctx, &plannedFromPlan)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	planned.Statements = plannedFromPlan.Statements
+
+	// Upsert access record if inline statements are configured
+	if len(planned.Statements) > 0 {
+		if err := upsertServiceClientAccessRecord(ctx, r.sdk, clientId, planned.Name.ValueString(), planned.Statements); err != nil {
+			resp.Diagnostics.AddError("Failed to upsert access record for service client", err.Error())
+			return
+		}
+	}
+
 	diags = resp.State.Set(ctx, planned)
 	resp.Diagnostics.Append(diags...)
 }
@@ -373,6 +429,7 @@ func mapSdkServiceClientToTerraform(sdkClient *models.Client) AuthressServiceCli
 	tf := AuthressServiceClientResource{
 		ClientId:    TerraformType.StringValue(sdkClient.ClientId),
 		CreatedTime: TerraformType.StringValue(sdkClient.CreatedTime.Format(time.RFC3339)),
+		Statements:  []AccessRecordStatementResource{},
 	}
 
 	if sdkClient.HasName() {
@@ -429,6 +486,47 @@ func mapTerraformServiceClientToSdk(tf *AuthressServiceClientResource) *models.C
 	}
 
 	return sdkClient
+}
+
+// upsertServiceClientAccessRecord creates or updates an access record with the same ID as the
+// service client, granting the client the roles specified in inline statement blocks.
+func upsertServiceClientAccessRecord(ctx context.Context, sdk *authress.AuthressClient, clientId string, clientName string, statements []AccessRecordStatementResource) error {
+	sdkStatements := make([]models.Statement, 0, len(statements))
+	for _, s := range statements {
+		roles := make([]string, 0, len(s.Roles))
+		for _, role := range s.Roles {
+			roles = append(roles, role.ValueString())
+		}
+
+		resources := make([]models.Resource, 0, len(s.Resources))
+		for _, res := range s.Resources {
+			resources = append(resources, models.Resource{ResourceUri: res.ResourceUri.ValueString()})
+		}
+
+		sdkStatements = append(sdkStatements, models.Statement{
+			Roles:     roles,
+			Resources: resources,
+		})
+	}
+
+	record := models.AccessRecord{
+		Name: clientName + " - Access",
+	}
+	record.SetRecordId(clientId)
+	record.SetUsers([]models.User{{UserId: clientId}})
+	record.SetStatements(sdkStatements)
+
+	tflog.Debug(ctx, "Upserting access record for service client", map[string]any{"recordId": clientId})
+	_, err := sdk.AccessRecords.UpdateRecord(ctx, clientId).AccessRecord(record).Execute()
+	if err != nil {
+		var clientErr *apis.ClientHttpError
+		detail := fmt.Sprintf("Could not upsert access record %q: %s", clientId, err.Error())
+		if errors.As(err, &clientErr) {
+			detail += fmt.Sprintf("\nHTTP %d | body: %s", clientErr.StatusCode(), string(clientErr.Body()))
+		}
+		return fmt.Errorf("%s", detail)
+	}
+	return nil
 }
 
 func collectServiceClientMismatches(planned *AuthressServiceClientResource, existing *models.Client) []FieldMismatch {

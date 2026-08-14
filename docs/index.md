@@ -25,7 +25,6 @@ terraform {
 }
 
 provider "authress" {
-  # Authentication via AUTHRESS_KEY environment variable (CI/CD OIDC token)
   # See: https://authress.io/knowledge-base/docs/category/cicd
 }
 

@@ -17,6 +17,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	TerraformType "github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-log/tflog"
 
 	authress "github.com/authress/authress-sdk.go"
 	"github.com/authress/authress-sdk.go/apis"
@@ -165,15 +166,28 @@ func (r *RoleInterfaceProvider) Create(ctx context.Context, req resource.CreateR
 		return
 	}
 
+	tflog.Debug(ctx, "Role.Create starting", map[string]any{"roleId": plannedAuthressRoleResource.RoleID.ValueString(), "name": plannedAuthressRoleResource.Name.ValueString()})
+
 	sdkRole := MapTerraformRoleToSdk(&plannedAuthressRoleResource)
+	tflog.Debug(ctx, "Calling CreateRole", map[string]any{"roleId": plannedAuthressRoleResource.RoleID.ValueString(), "name": sdkRole.Name, "permissionCount": len(sdkRole.Permissions)})
 	returnedRole, _, err := r.sdk.Roles.CreateRole(ctx, sdkRole)
 	if err != nil {
 		var clientErr *apis.ClientHttpError
 		if errors.As(err, &clientErr) && clientErr.StatusCode() == 409 {
+			tflog.Debug(ctx, "CreateRole returned 409, attempting adoption", map[string]any{"roleId": plannedAuthressRoleResource.RoleID.ValueString()})
 			// Resource already exists — attempt to adopt
 			roleId := plannedAuthressRoleResource.RoleID.ValueString()
+			tflog.Debug(ctx, "Calling GetRole for adoption", map[string]any{"roleId": roleId})
 			existingRole, _, getErr := r.sdk.Roles.GetRole(ctx, roleId)
 			if getErr != nil {
+				var adoptErr *apis.ClientHttpError
+				statusCode := 0
+				body := ""
+				if errors.As(getErr, &adoptErr) {
+					statusCode = adoptErr.StatusCode()
+					body = string(adoptErr.Body())
+				}
+				tflog.Error(ctx, "GetRole for adoption failed", map[string]any{"roleId": roleId, "status": statusCode, "body": body, "error": getErr.Error()})
 				resp.Diagnostics.AddError("Failed to read existing role for adoption", getErr.Error())
 				return
 			}
@@ -181,6 +195,7 @@ func (r *RoleInterfaceProvider) Create(ctx context.Context, req resource.CreateR
 			// Compare configurable fields
 			mismatches := collectRoleMismatches(&plannedAuthressRoleResource, existingRole)
 			if mismatches != nil {
+				tflog.Debug(ctx, "Role adoption failed due to mismatches", map[string]any{"roleId": roleId})
 				resp.Diagnostics.AddError(
 					"Cannot adopt existing role",
 					formatMismatches("authress_role", roleId, mismatches),
@@ -189,6 +204,7 @@ func (r *RoleInterfaceProvider) Create(ctx context.Context, req resource.CreateR
 			}
 
 			// Adopt: populate state from existing resource
+			tflog.Debug(ctx, "Role adoption succeeded", map[string]any{"roleId": roleId})
 			plannedAuthressRoleResource = MapSdkRoleToTerraform(existingRole)
 			plannedAuthressRoleResource.LastUpdated = TerraformType.StringValue(time.Now().Format(time.RFC850))
 			diags = resp.State.Set(ctx, plannedAuthressRoleResource)
@@ -196,6 +212,13 @@ func (r *RoleInterfaceProvider) Create(ctx context.Context, req resource.CreateR
 			return
 		}
 
+		statusCode := 0
+		body := ""
+		if errors.As(err, &clientErr) {
+			statusCode = clientErr.StatusCode()
+			body = string(clientErr.Body())
+		}
+		tflog.Error(ctx, "CreateRole failed", map[string]any{"roleId": plannedAuthressRoleResource.RoleID.ValueString(), "status": statusCode, "body": body, "error": err.Error()})
 		resp.Diagnostics.AddError(
 			"Authress API Response: Attempted to create role:",
 			GetErrorWrapper("Could not create role, unexpected error: "+err.Error()),
@@ -203,6 +226,7 @@ func (r *RoleInterfaceProvider) Create(ctx context.Context, req resource.CreateR
 		return
 	}
 
+	tflog.Debug(ctx, "CreateRole succeeded", map[string]any{"roleId": returnedRole.GetRoleId(), "name": returnedRole.Name})
 	plannedAuthressRoleResource = MapSdkRoleToTerraform(returnedRole)
 	plannedAuthressRoleResource.LastUpdated = TerraformType.StringValue(time.Now().Format(time.RFC850))
 
@@ -220,13 +244,24 @@ func (r *RoleInterfaceProvider) Read(ctx context.Context, req resource.ReadReque
 	}
 
 	roleId := currentAuthressRoleResource.RoleID.ValueString()
+	tflog.Debug(ctx, "Role.Read starting", map[string]any{"roleId": roleId})
+
+	tflog.Debug(ctx, "Calling GetRole", map[string]any{"roleId": roleId})
 	returnedRole, _, err := r.sdk.Roles.GetRole(ctx, roleId)
 	if err != nil {
 		var clientErr *apis.ClientHttpError
 		if errors.As(err, &clientErr) && clientErr.StatusCode() == 404 {
+			tflog.Debug(ctx, "GetRole returned 404, removing from state", map[string]any{"roleId": roleId})
 			resp.State.RemoveResource(ctx)
 			return
 		}
+		statusCode := 0
+		body := ""
+		if errors.As(err, &clientErr) {
+			statusCode = clientErr.StatusCode()
+			body = string(clientErr.Body())
+		}
+		tflog.Error(ctx, "GetRole failed", map[string]any{"roleId": roleId, "status": statusCode, "body": body, "error": err.Error()})
 		resp.Diagnostics.AddError(
 			"Authress API Response: Attempted to get role:",
 			GetErrorWrapper("Could not read Authress role ID "+roleId+": "+err.Error()),
@@ -234,6 +269,7 @@ func (r *RoleInterfaceProvider) Read(ctx context.Context, req resource.ReadReque
 		return
 	}
 
+	tflog.Debug(ctx, "GetRole succeeded", map[string]any{"roleId": roleId, "name": returnedRole.Name, "permissionCount": len(returnedRole.Permissions)})
 	currentAuthressRoleResource = MapSdkRoleToTerraform(returnedRole)
 	diags = resp.State.Set(ctx, &currentAuthressRoleResource)
 	resp.Diagnostics.Append(diags...)
@@ -249,9 +285,20 @@ func (r *RoleInterfaceProvider) Update(ctx context.Context, req resource.UpdateR
 	}
 
 	roleId := plannedAuthressRoleResource.RoleID.ValueString()
+	tflog.Debug(ctx, "Role.Update starting", map[string]any{"roleId": roleId, "name": plannedAuthressRoleResource.Name.ValueString()})
+
 	sdkRole := MapTerraformRoleToSdk(&plannedAuthressRoleResource)
+	tflog.Debug(ctx, "Calling UpdateRole", map[string]any{"roleId": roleId, "name": sdkRole.Name, "permissionCount": len(sdkRole.Permissions)})
 	returnedRole, _, err := r.sdk.Roles.UpdateRole(ctx, roleId, sdkRole)
 	if err != nil {
+		var clientErr *apis.ClientHttpError
+		statusCode := 0
+		body := ""
+		if errors.As(err, &clientErr) {
+			statusCode = clientErr.StatusCode()
+			body = string(clientErr.Body())
+		}
+		tflog.Error(ctx, "UpdateRole failed", map[string]any{"roleId": roleId, "status": statusCode, "body": body, "error": err.Error()})
 		resp.Diagnostics.AddError(
 			"Authress API Response: Attempted to update role:",
 			GetErrorWrapper("Could not update role, unexpected error: "+err.Error()),
@@ -259,6 +306,7 @@ func (r *RoleInterfaceProvider) Update(ctx context.Context, req resource.UpdateR
 		return
 	}
 
+	tflog.Debug(ctx, "UpdateRole succeeded", map[string]any{"roleId": roleId, "name": returnedRole.Name})
 	plannedAuthressRoleResource = MapSdkRoleToTerraform(returnedRole)
 	plannedAuthressRoleResource.LastUpdated = TerraformType.StringValue(time.Now().Format(time.RFC850))
 
@@ -276,14 +324,27 @@ func (r *RoleInterfaceProvider) Delete(ctx context.Context, req resource.DeleteR
 	}
 
 	roleId := currentAuthressRoleResource.RoleID.ValueString()
+	tflog.Debug(ctx, "Role.Delete starting", map[string]any{"roleId": roleId})
+
+	tflog.Debug(ctx, "Calling DeleteRole", map[string]any{"roleId": roleId})
 	_, err := r.sdk.Roles.DeleteRole(ctx, roleId)
 	if err != nil {
+		var clientErr *apis.ClientHttpError
+		statusCode := 0
+		body := ""
+		if errors.As(err, &clientErr) {
+			statusCode = clientErr.StatusCode()
+			body = string(clientErr.Body())
+		}
+		tflog.Error(ctx, "DeleteRole failed", map[string]any{"roleId": roleId, "status": statusCode, "body": body, "error": err.Error()})
 		resp.Diagnostics.AddError(
 			"Authress API Response: Attempted to delete role:",
 			GetErrorWrapper("Could not delete role, unexpected error: "+err.Error()),
 		)
 		return
 	}
+
+	tflog.Debug(ctx, "DeleteRole succeeded", map[string]any{"roleId": roleId})
 }
 
 func (r *RoleInterfaceProvider) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
