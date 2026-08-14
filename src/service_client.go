@@ -430,6 +430,23 @@ func (r *ServiceClientInterfaceProvider) Delete(ctx context.Context, req resourc
 	}
 
 	clientId := current.ClientId.ValueString()
+
+	// Delete the access record first if inline statements were configured
+	if len(current.Statements) > 0 {
+		_, delRecordErr := r.sdk.AccessRecords.DeleteRecord(ctx, clientId).Execute()
+		if delRecordErr != nil {
+			// Ignore 404 — record may not exist yet or was already deleted
+			var clientErr *apis.ClientHttpError
+			if !errors.As(delRecordErr, &clientErr) || clientErr.StatusCode() != 404 {
+				resp.Diagnostics.AddError(
+					"Failed to delete access record for service client",
+					fmt.Sprintf("Could not delete access record %q: %s", clientId, delRecordErr.Error()),
+				)
+				return
+			}
+		}
+	}
+
 	_, err := r.sdk.ServiceClients.DeleteClient(ctx, clientId)
 	if err != nil {
 		resp.Diagnostics.AddError(
