@@ -147,10 +147,35 @@ func (r *AccessRecordGranularInterfaceProvider) Create(ctx context.Context, req 
 
 	sdkRecord := mapTerraformAccessRecordGranularToSdk(&planned)
 
-	_, err := r.sdk.AccessRecords.UpdateRecord(ctx, recordId).AccessRecord(sdkRecord).Execute()
+	// POST to create, fall back to adoption on 409 (already exists)
+	_, _, err := r.sdk.AccessRecords.CreateRecord(ctx).AccessRecord(sdkRecord).Execute()
 	if err != nil {
-		detail := fmt.Sprintf("Could not create access record %q: %s", recordId, err.Error())
 		var clientErr *apis.ClientHttpError
+		if errors.As(err, &clientErr) && clientErr.StatusCode() == 409 {
+			// Record already exists — attempt adoption
+			tflog.Debug(ctx, "Access record already exists, attempting adoption", map[string]any{"recordId": recordId})
+			existingRecord, _, getErr := r.sdk.AccessRecords.GetRecord(ctx, recordId).Execute()
+			if getErr != nil {
+				resp.Diagnostics.AddError("Failed to read existing access record for adoption", getErr.Error())
+				return
+			}
+
+			mismatches := collectAccessRecordGranularMismatches(&planned, existingRecord)
+			if mismatches != nil {
+				resp.Diagnostics.AddError(
+					"Cannot adopt existing access record",
+					formatMismatches("authress_access_record_granular", recordId, mismatches),
+				)
+				return
+			}
+
+			// Adopt: state matches — populate from existing
+			tflog.Debug(ctx, "Access record adoption succeeded", map[string]any{"recordId": recordId})
+			diags = resp.State.Set(ctx, planned)
+			resp.Diagnostics.Append(diags...)
+			return
+		}
+		detail := fmt.Sprintf("Could not create access record %q: %s", recordId, err.Error())
 		if errors.As(err, &clientErr) {
 			detail += fmt.Sprintf("\nHTTP %d | body: %s", clientErr.StatusCode(), string(clientErr.Body()))
 		}
@@ -359,4 +384,97 @@ func mapSdkAccessRecordGranularToTerraform(sdkRecord *models.AccessRecord) Authr
 	}
 
 	return tf
+}
+
+// ─── Adoption ────────────────────────────────────────────────────────────────
+
+func collectAccessRecordGranularMismatches(planned *AuthressAccessRecordGranularResource, existing *models.AccessRecord) []FieldMismatch {
+	checks := []*FieldMismatch{
+		compareField("name", planned.Name.ValueString(), existing.GetName()),
+	}
+
+	existingStmts := existing.GetStatements()
+	if len(planned.Statements) != len(existingStmts) {
+		checks = append(checks, &FieldMismatch{
+			Field:    "statements (count)",
+			Expected: fmt.Sprintf("%d", len(planned.Statements)),
+			Actual:   fmt.Sprintf("%d", len(existingStmts)),
+		})
+	} else {
+		for i, s := range planned.Statements {
+			if i >= len(existingStmts) {
+				break
+			}
+			existingStmt := existingStmts[i]
+
+			// Roles
+			plannedRoles := make([]string, 0, len(s.Roles))
+			for _, r := range s.Roles {
+				plannedRoles = append(plannedRoles, r.ValueString())
+			}
+			if len(plannedRoles) != len(existingStmt.Roles) {
+				checks = append(checks, &FieldMismatch{
+					Field:    fmt.Sprintf("statements[%d].roles (count)", i),
+					Expected: fmt.Sprintf("%d", len(plannedRoles)),
+					Actual:   fmt.Sprintf("%d", len(existingStmt.Roles)),
+				})
+			} else {
+				for j, role := range plannedRoles {
+					checks = append(checks, compareField(
+						fmt.Sprintf("statements[%d].roles[%d]", i, j), role, existingStmt.Roles[j]))
+				}
+			}
+
+			// Resources
+			if len(s.Resources) != len(existingStmt.Resources) {
+				checks = append(checks, &FieldMismatch{
+					Field:    fmt.Sprintf("statements[%d].resources (count)", i),
+					Expected: fmt.Sprintf("%d", len(s.Resources)),
+					Actual:   fmt.Sprintf("%d", len(existingStmt.Resources)),
+				})
+			} else {
+				for j, res := range s.Resources {
+					checks = append(checks, compareField(
+						fmt.Sprintf("statements[%d].resources[%d].resource_uri", i, j),
+						res.ResourceUri.ValueString(), existingStmt.Resources[j].ResourceUri))
+				}
+			}
+
+			// Users
+			if len(s.Users) != len(existingStmt.Users) {
+				checks = append(checks, &FieldMismatch{
+					Field:    fmt.Sprintf("statements[%d].users (count)", i),
+					Expected: fmt.Sprintf("%d", len(s.Users)),
+					Actual:   fmt.Sprintf("%d", len(existingStmt.Users)),
+				})
+			} else {
+				for j, u := range s.Users {
+					if j < len(existingStmt.Users) {
+						checks = append(checks, compareField(
+							fmt.Sprintf("statements[%d].users[%d].user_id", i, j),
+							u.UserId.ValueString(), existingStmt.Users[j].UserId))
+					}
+				}
+			}
+
+			// Groups
+			if len(s.Groups) != len(existingStmt.Groups) {
+				checks = append(checks, &FieldMismatch{
+					Field:    fmt.Sprintf("statements[%d].groups (count)", i),
+					Expected: fmt.Sprintf("%d", len(s.Groups)),
+					Actual:   fmt.Sprintf("%d", len(existingStmt.Groups)),
+				})
+			} else {
+				for j, g := range s.Groups {
+					if j < len(existingStmt.Groups) {
+						checks = append(checks, compareField(
+							fmt.Sprintf("statements[%d].groups[%d].group_id", i, j),
+							g.GroupId.ValueString(), existingStmt.Groups[j].GroupId))
+					}
+				}
+			}
+		}
+	}
+
+	return collectMismatches(checks...)
 }

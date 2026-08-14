@@ -139,11 +139,35 @@ func (r *AccessRecordInterfaceProvider) Create(ctx context.Context, req resource
 
 	sdkRecord := mapTerraformAccessRecordToSdk(&planned)
 
-	// PUT (upsert) — idempotent create with user-specified ID
-	_, err := r.sdk.AccessRecords.UpdateRecord(ctx, recordId).AccessRecord(sdkRecord).Execute()
+	// POST to create, fall back to adoption on 409 (already exists)
+	_, _, err := r.sdk.AccessRecords.CreateRecord(ctx).AccessRecord(sdkRecord).Execute()
 	if err != nil {
-		detail := fmt.Sprintf("Could not create access record %q: %s", recordId, err.Error())
 		var clientErr *apis.ClientHttpError
+		if errors.As(err, &clientErr) && clientErr.StatusCode() == 409 {
+			// Record already exists — attempt adoption
+			tflog.Debug(ctx, "Access record already exists, attempting adoption", map[string]any{"recordId": recordId})
+			existingRecord, _, getErr := r.sdk.AccessRecords.GetRecord(ctx, recordId).Execute()
+			if getErr != nil {
+				resp.Diagnostics.AddError("Failed to read existing access record for adoption", getErr.Error())
+				return
+			}
+
+			mismatches := collectAccessRecordMismatches(&planned, existingRecord)
+			if mismatches != nil {
+				resp.Diagnostics.AddError(
+					"Cannot adopt existing access record",
+					formatMismatches("authress_access_record", recordId, mismatches),
+				)
+				return
+			}
+
+			// Adopt: state matches — populate from existing
+			tflog.Debug(ctx, "Access record adoption succeeded", map[string]any{"recordId": recordId})
+			diags = resp.State.Set(ctx, planned)
+			resp.Diagnostics.Append(diags...)
+			return
+		}
+		detail := fmt.Sprintf("Could not create access record %q: %s", recordId, err.Error())
 		if errors.As(err, &clientErr) {
 			detail += fmt.Sprintf("\nHTTP %d | body: %s", clientErr.StatusCode(), string(clientErr.Body()))
 		}

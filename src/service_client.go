@@ -517,11 +517,44 @@ func upsertServiceClientAccessRecord(ctx context.Context, sdk *authress.Authress
 	record.SetStatements(sdkStatements)
 
 	tflog.Debug(ctx, "Upserting access record for service client", map[string]any{"recordId": clientId})
-	_, err := sdk.AccessRecords.UpdateRecord(ctx, clientId).AccessRecord(record).Execute()
-	if err != nil {
+
+	// POST to create. On 409 (already exists): GET, compare, adopt-or-error.
+	_, _, createErr := sdk.AccessRecords.CreateRecord(ctx).AccessRecord(record).Execute()
+	if createErr != nil {
 		var clientErr *apis.ClientHttpError
-		detail := fmt.Sprintf("Could not upsert access record %q: %s", clientId, err.Error())
-		if errors.As(err, &clientErr) {
+		if errors.As(createErr, &clientErr) && clientErr.StatusCode() == 409 {
+			// Record already exists — compare before overwriting
+			tflog.Debug(ctx, "Access record already exists, checking for adoption", map[string]any{"recordId": clientId})
+			existingRecord, _, getErr := sdk.AccessRecords.GetRecord(ctx, clientId).Execute()
+			if getErr != nil {
+				return fmt.Errorf("failed to read existing access record %q for adoption: %s", clientId, getErr.Error())
+			}
+
+			// Build a planned representation for mismatch comparison
+			plannedRecord := &AuthressAccessRecordResource{
+				RecordId: TerraformType.StringValue(clientId),
+				Name:     TerraformType.StringValue(record.Name),
+			}
+			plannedRecord.Users = make([]AccessRecordUserResource, 0, len(record.GetUsers()))
+			for _, u := range record.GetUsers() {
+				plannedRecord.Users = append(plannedRecord.Users, AccessRecordUserResource{
+					UserId: TerraformType.StringValue(u.UserId),
+				})
+			}
+			plannedRecord.Statements = statements
+
+			mismatches := collectAccessRecordMismatches(plannedRecord, existingRecord)
+			if mismatches != nil {
+				return fmt.Errorf("cannot adopt existing access record %q — configuration differs from remote:\n%s",
+					clientId, formatMismatches("authress_service_client (inline access record)", clientId, mismatches))
+			}
+
+			// Matches — adopted, nothing to do
+			tflog.Debug(ctx, "Access record adoption succeeded (inline)", map[string]any{"recordId": clientId})
+			return nil
+		}
+		detail := fmt.Sprintf("Could not create access record %q: %s", clientId, createErr.Error())
+		if errors.As(createErr, &clientErr) {
 			detail += fmt.Sprintf("\nHTTP %d | body: %s", clientErr.StatusCode(), string(clientErr.Body()))
 		}
 		return fmt.Errorf("%s", detail)
