@@ -359,8 +359,13 @@ func MapSdkRoleToTerraform(sdkRole *models.Role) AuthressRoleResource {
 		RoleID:      TerraformType.StringValue(roleId),
 		LegacyID:    TerraformType.StringValue(roleId),
 		Name:        TerraformType.StringValue(sdkRole.Name),
-		Description: TerraformType.StringValue(description),
 		Permissions: make(map[string]AuthressRolePermissionResource),
+	}
+
+	if description != "" {
+		terraformRole.Description = TerraformType.StringValue(description)
+	} else {
+		terraformRole.Description = TerraformType.StringNull()
 	}
 
 	for _, perm := range sdkRole.Permissions {
