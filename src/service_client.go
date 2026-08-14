@@ -389,6 +389,25 @@ func (r *ServiceClientInterfaceProvider) Update(ctx context.Context, req resourc
 	}
 	planned.Statements = plannedFromPlan.Statements
 
+	// Preserve access_key public_key values from plan to match framework set correlation,
+	// but take key_id from the API response
+	if len(plannedFromPlan.AccessKeys) > 0 {
+		apiKeysByPublicKey := make(map[string]string, len(planned.AccessKeys))
+		for _, k := range planned.AccessKeys {
+			apiKeysByPublicKey[k.PublicKey.ValueString()] = k.KeyId.ValueString()
+		}
+		mergedKeys := make([]ServiceClientAccessKeyResource, 0, len(plannedFromPlan.AccessKeys))
+		for _, planKey := range plannedFromPlan.AccessKeys {
+			pk := planKey.PublicKey.ValueString()
+			keyId := apiKeysByPublicKey[pk]
+			mergedKeys = append(mergedKeys, ServiceClientAccessKeyResource{
+				PublicKey: planKey.PublicKey,
+				KeyId:     TerraformType.StringValue(keyId),
+			})
+		}
+		planned.AccessKeys = mergedKeys
+	}
+
 	// Upsert access record if inline statements are configured
 	if len(planned.Statements) > 0 {
 		if err := upsertServiceClientAccessRecord(ctx, r.sdk, clientId, planned.Name.ValueString(), planned.Statements); err != nil {
@@ -436,7 +455,8 @@ func mapSdkServiceClientToTerraform(sdkClient *models.Client) AuthressServiceCli
 		tf.Name = TerraformType.StringValue(sdkClient.GetName())
 	}
 
-	if sdkClient.Tags != nil {
+	// Tags: only set if API returns non-empty tags — null in plan must stay null in state
+	if sdkClient.Tags != nil && len(sdkClient.Tags) > 0 {
 		tf.Tags = make(map[string]TerraformType.String, len(sdkClient.Tags))
 		for k, v := range sdkClient.Tags {
 			tf.Tags[k] = TerraformType.StringValue(v)
