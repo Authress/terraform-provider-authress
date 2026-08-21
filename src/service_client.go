@@ -271,27 +271,11 @@ func (r *ServiceClientInterfaceProvider) Read(ctx context.Context, req resource.
 
 	// Preserve inline statements from prior state — the service client API doesn't return them
 	previousStatements := current.Statements
+	// Access keys are immutable and keyed by the user's config public_key — never overwrite from API
 	previousAccessKeys := current.AccessKeys
 	current = mapSdkServiceClientToTerraform(returnedClient)
 	current.Statements = previousStatements
-
-	// The API may not return public_key in verificationKeys — preserve from prior state by matching on key_id
-	if len(previousAccessKeys) > 0 && len(current.AccessKeys) > 0 {
-		previousByKeyId := make(map[string]string, len(previousAccessKeys))
-		for _, k := range previousAccessKeys {
-			if kid := k.KeyId.ValueString(); kid != "" {
-				previousByKeyId[kid] = k.PublicKey.ValueString()
-			}
-		}
-		for i := range current.AccessKeys {
-			kid := current.AccessKeys[i].KeyId.ValueString()
-			if pk := current.AccessKeys[i].PublicKey.ValueString(); pk == "" {
-				if prevPk, ok := previousByKeyId[kid]; ok {
-					current.AccessKeys[i].PublicKey = TerraformType.StringValue(prevPk)
-				}
-			}
-		}
-	}
+	current.AccessKeys = previousAccessKeys
 	diags = resp.State.Set(ctx, &current)
 	resp.Diagnostics.Append(diags...)
 }
@@ -350,13 +334,16 @@ func (r *ServiceClientInterfaceProvider) Update(ctx context.Context, req resourc
 		plannedKeys[key.PublicKey.ValueString()] = key
 	}
 
+	// Track key_id for newly created keys
+	newKeyIds := make(map[string]string) // public_key → key_id
+
 	// Keys in plan but not in state → POST (create)
 	for publicKey := range plannedKeys {
 		if _, exists := existingKeys[publicKey]; !exists {
 			accessKeyBody := &models.ClientAccessKey{}
 			accessKeyBody.SetPublicKey(publicKey)
 
-			_, _, keyErr := r.sdk.ServiceClients.RequestAccessKey(ctx, clientId, accessKeyBody)
+			returnedKey, _, keyErr := r.sdk.ServiceClients.RequestAccessKey(ctx, clientId, accessKeyBody)
 			if keyErr != nil {
 				detail := fmt.Sprintf("Could not create access key with public_key %q: %s", publicKey, keyErr.Error())
 				var clientErr *apis.ClientHttpError
@@ -366,6 +353,7 @@ func (r *ServiceClientInterfaceProvider) Update(ctx context.Context, req resourc
 				resp.Diagnostics.AddError("Failed to create access key", detail)
 				return
 			}
+			newKeyIds[publicKey] = returnedKey.GetKeyId()
 		}
 	}
 
@@ -387,7 +375,24 @@ func (r *ServiceClientInterfaceProvider) Update(ctx context.Context, req resourc
 		}
 	}
 
-	// Re-read to get accurate state including key_id assignments
+	// Build final access key state: config's public_key + key_id from state or create response
+	finalKeys := make([]ServiceClientAccessKeyResource, 0, len(planned.AccessKeys))
+	for _, planKey := range planned.AccessKeys {
+		pk := planKey.PublicKey.ValueString()
+		var keyId string
+		if existing, ok := existingKeys[pk]; ok {
+			keyId = existing.KeyId.ValueString()
+		} else if newId, ok := newKeyIds[pk]; ok {
+			keyId = newId
+		}
+		finalKeys = append(finalKeys, ServiceClientAccessKeyResource{
+			PublicKey: planKey.PublicKey,
+			KeyId:     TerraformType.StringValue(keyId),
+		})
+	}
+	planned.AccessKeys = finalKeys
+
+	// Re-read client metadata (name, options, tags) — but NOT access keys
 	refreshedClient, _, readErr := r.sdk.ServiceClients.GetClient(ctx, clientId)
 	if readErr != nil {
 		resp.Diagnostics.AddError(
@@ -397,7 +402,12 @@ func (r *ServiceClientInterfaceProvider) Update(ctx context.Context, req resourc
 		return
 	}
 
-	planned = mapSdkServiceClientToTerraform(refreshedClient)
+	refreshed := mapSdkServiceClientToTerraform(refreshedClient)
+	planned.ClientId = refreshed.ClientId
+	planned.CreatedTime = refreshed.CreatedTime
+	planned.Name = refreshed.Name
+	planned.Options = refreshed.Options
+	planned.Tags = refreshed.Tags
 
 	// Preserve inline statements from plan (not stored on service client API)
 	var plannedFromPlan AuthressServiceClientResource
@@ -407,25 +417,6 @@ func (r *ServiceClientInterfaceProvider) Update(ctx context.Context, req resourc
 		return
 	}
 	planned.Statements = plannedFromPlan.Statements
-
-	// Preserve access_key public_key values from plan to match framework set correlation,
-	// but take key_id from the API response
-	if len(plannedFromPlan.AccessKeys) > 0 {
-		apiKeysByPublicKey := make(map[string]string, len(planned.AccessKeys))
-		for _, k := range planned.AccessKeys {
-			apiKeysByPublicKey[k.PublicKey.ValueString()] = k.KeyId.ValueString()
-		}
-		mergedKeys := make([]ServiceClientAccessKeyResource, 0, len(plannedFromPlan.AccessKeys))
-		for _, planKey := range plannedFromPlan.AccessKeys {
-			pk := planKey.PublicKey.ValueString()
-			keyId := apiKeysByPublicKey[pk]
-			mergedKeys = append(mergedKeys, ServiceClientAccessKeyResource{
-				PublicKey: planKey.PublicKey,
-				KeyId:     TerraformType.StringValue(keyId),
-			})
-		}
-		planned.AccessKeys = mergedKeys
-	}
 
 	// Upsert access record if inline statements are configured
 	if len(planned.Statements) > 0 {
