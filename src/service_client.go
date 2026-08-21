@@ -271,8 +271,27 @@ func (r *ServiceClientInterfaceProvider) Read(ctx context.Context, req resource.
 
 	// Preserve inline statements from prior state — the service client API doesn't return them
 	previousStatements := current.Statements
+	previousAccessKeys := current.AccessKeys
 	current = mapSdkServiceClientToTerraform(returnedClient)
 	current.Statements = previousStatements
+
+	// The API may not return public_key in verificationKeys — preserve from prior state by matching on key_id
+	if len(previousAccessKeys) > 0 && len(current.AccessKeys) > 0 {
+		previousByKeyId := make(map[string]string, len(previousAccessKeys))
+		for _, k := range previousAccessKeys {
+			if kid := k.KeyId.ValueString(); kid != "" {
+				previousByKeyId[kid] = k.PublicKey.ValueString()
+			}
+		}
+		for i := range current.AccessKeys {
+			kid := current.AccessKeys[i].KeyId.ValueString()
+			if pk := current.AccessKeys[i].PublicKey.ValueString(); pk == "" {
+				if prevPk, ok := previousByKeyId[kid]; ok {
+					current.AccessKeys[i].PublicKey = TerraformType.StringValue(prevPk)
+				}
+			}
+		}
+	}
 	diags = resp.State.Set(ctx, &current)
 	resp.Diagnostics.Append(diags...)
 }
