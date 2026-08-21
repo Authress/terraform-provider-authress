@@ -273,6 +273,30 @@ func (r *ServiceClientInterfaceProvider) Read(ctx context.Context, req resource.
 	previousStatements := current.Statements
 	// Access keys are immutable and keyed by the user's config public_key — never overwrite from API
 	previousAccessKeys := current.AccessKeys
+
+	// Recover key_id from API if state is corrupted (empty key_id from prior provider version)
+	hasEmptyKeyId := false
+	for _, k := range previousAccessKeys {
+		if k.KeyId.ValueString() == "" && k.PublicKey.ValueString() != "" {
+			hasEmptyKeyId = true
+			break
+		}
+	}
+	if hasEmptyKeyId && returnedClient.HasVerificationKeys() {
+		apiKeys := make(map[string]string)
+		for _, vk := range returnedClient.GetVerificationKeys() {
+			apiKeys[vk.GetPublicKey()] = vk.GetKeyId()
+		}
+		for i := range previousAccessKeys {
+			if previousAccessKeys[i].KeyId.ValueString() == "" {
+				pk := previousAccessKeys[i].PublicKey.ValueString()
+				if kid, ok := apiKeys[pk]; ok {
+					previousAccessKeys[i].KeyId = TerraformType.StringValue(kid)
+				}
+			}
+		}
+	}
+
 	current = mapSdkServiceClientToTerraform(returnedClient)
 	current.Statements = previousStatements
 	current.AccessKeys = previousAccessKeys
@@ -376,14 +400,30 @@ func (r *ServiceClientInterfaceProvider) Update(ctx context.Context, req resourc
 	}
 
 	// Build final access key state: config's public_key + key_id from state or create response
+	// If state has empty key_id (corrupted by prior provider version), recover from API
+	var recoveredKeyIds map[string]string
 	finalKeys := make([]ServiceClientAccessKeyResource, 0, len(planned.AccessKeys))
 	for _, planKey := range planned.AccessKeys {
 		pk := planKey.PublicKey.ValueString()
 		var keyId string
 		if existing, ok := existingKeys[pk]; ok {
 			keyId = existing.KeyId.ValueString()
-		} else if newId, ok := newKeyIds[pk]; ok {
+		}
+		if newId, ok := newKeyIds[pk]; ok {
 			keyId = newId
+		}
+		// Recover from API if key_id is still empty (corrupted state)
+		if keyId == "" {
+			if recoveredKeyIds == nil {
+				recoveredKeyIds = make(map[string]string)
+				refreshedForKeys, _, _ := r.sdk.ServiceClients.GetClient(ctx, clientId)
+				if refreshedForKeys != nil && refreshedForKeys.HasVerificationKeys() {
+					for _, vk := range refreshedForKeys.GetVerificationKeys() {
+						recoveredKeyIds[vk.GetPublicKey()] = vk.GetKeyId()
+					}
+				}
+			}
+			keyId = recoveredKeyIds[pk]
 		}
 		finalKeys = append(finalKeys, ServiceClientAccessKeyResource{
 			PublicKey: planKey.PublicKey,
